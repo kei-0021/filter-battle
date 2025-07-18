@@ -1,4 +1,3 @@
-// src/App.tsx
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { PlayerCard } from "./components/PlayerCard";
@@ -12,9 +11,10 @@ type Player = {
   name: string;
 };
 
-type Topic = {
+type TopicWithFilters = {
   id: number;
   title: string;
+  filters: string[];
 };
 
 type CardsMap = {
@@ -28,8 +28,13 @@ function App() {
   const [hostId, setHostId] = useState<string | null>(null);
   const [readyCount, setReadyCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
-  const [currentTopic, setCurrentTopic] = useState<Topic | null>(null);
+
+  // currentTopicにfiltersが含まれる型に変更
+  const [currentTopic, setCurrentTopic] = useState<TopicWithFilters | null>(null);
+
+  // currentFilterはフィルタラーに割り当てられたフィルターを保持
   const [currentFilter, setCurrentFilter] = useState<string | null>(null);
+
   const [cards, setCards] = useState<CardsMap>({});
   const [draftCard, setDraftCard] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -55,7 +60,7 @@ function App() {
       }
     );
 
-    socket.on("topic_update", (topic: Topic | null) => {
+    socket.on("topic_update", (topic: TopicWithFilters | null) => {
       setCurrentTopic(topic);
       setDraftCard("");
       setSubmitted(false);
@@ -79,6 +84,7 @@ function App() {
       }, 1000);
     });
 
+    // フィルターはフィルタラーに割り当て済みで来る想定ならイベントで更新しないかも
     socket.on("filter_update", (filter: string | null) => {
       setCurrentFilter(filter);
     });
@@ -198,14 +204,14 @@ function App() {
 
           {isHost ? (
             <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>
-              あなたが親です
+              あなたがフィルタラーです
               <br />
               <span style={{ fontWeight: "normal", fontSize: "16px", color: "#555" }}>
                 フィルター: <strong>{currentFilter || "なし"}</strong> をテーマに書いてください
               </span>
             </p>
           ) : (
-            <h3>親を当てましょう!</h3>
+            <h3>フィルタラーを当てましょう!</h3>
           )}
 
           <h2>カードの提出状況</h2>

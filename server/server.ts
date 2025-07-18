@@ -1,8 +1,7 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
-import { filters } from "./data/filter";
-import { topics, type Topic } from "./data/topic";
+import { topics, type TopicWithFilters } from "./data/topic";
 
 const app = express();
 const server = http.createServer(app);
@@ -18,8 +17,8 @@ type Player = { id: string; name: string };
 let players: Player[] = [];
 let hostId: string | null = null;
 const readyPlayers = new Set<string>();
-let currentTopic: Topic | null = null;
-let currentFilter: string | null = null;  // 新規：現在のフィルター
+let currentTopic: TopicWithFilters | null = null;
+let currentFilter: string | null = null;
 const cards: { [playerId: string]: string } = {};
 let hiddenCards: { [playerId: string]: string } = {};
 const submittedPlayers = new Set<string>();
@@ -30,8 +29,10 @@ function pickRandomTopic() {
   return topics[Math.floor(Math.random() * topics.length)];
 }
 
-function pickRandomFilter() {
-  return filters[Math.floor(Math.random() * filters.length)].toString();
+function pickRandomFilter(topic: TopicWithFilters | null) {
+  if (!topic || topic.filters.length === 0) return null;
+  const idx = Math.floor(Math.random() * topic.filters.length);
+  return topic.filters[idx];
 }
 
 function startSubmitPhase() {
@@ -65,13 +66,13 @@ io.on("connection", (socket) => {
     if (players.length === 1) {
       hostId = socket.id;
       currentTopic = pickRandomTopic();
-      currentFilter = pickRandomFilter();
+      currentFilter = pickRandomFilter(currentTopic);
       startSubmitPhase();
       console.log("[join] 最初の参加者、submitフェーズ開始");
     }
     io.emit("players_update", { players, hostId });
     io.emit("topic_update", currentTopic);
-    io.emit("filter_update", currentFilter);  // 追加
+    io.emit("filter_update", currentFilter);
     io.emit("cards_update", cards);
     io.emit("submitted_update", Array.from(submittedPlayers));
   });
@@ -87,14 +88,14 @@ io.on("connection", (socket) => {
       const random = players[Math.floor(Math.random() * players.length)];
       hostId = random.id;
       currentTopic = pickRandomTopic();
-      currentFilter = pickRandomFilter();
+      currentFilter = pickRandomFilter(currentTopic);
       readyPlayers.clear();
       for (const pid in cards) delete cards[pid];
       hiddenCards = {};
       submittedPlayers.clear();
       io.emit("players_update", { players, hostId });
       io.emit("topic_update", currentTopic);
-      io.emit("filter_update", currentFilter);  // 追加
+      io.emit("filter_update", currentFilter);
       io.emit("cards_update", cards);
       io.emit("submitted_update", Array.from(submittedPlayers));
       io.emit("game_restarted");
@@ -137,7 +138,7 @@ io.on("connection", (socket) => {
     io.emit("players_update", { players, hostId });
     io.emit("ready_status", { readyCount: readyPlayers.size, totalCount: players.length });
     io.emit("topic_update", currentTopic);
-    io.emit("filter_update", currentFilter);  // 追加
+    io.emit("filter_update", currentFilter);
     io.emit("cards_update", cards);
     io.emit("submitted_update", Array.from(submittedPlayers));
   });
