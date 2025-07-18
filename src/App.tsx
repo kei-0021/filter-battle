@@ -1,5 +1,8 @@
+// src/App.tsx
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import { PlayerCard } from "./components/PlayerCard";
+import { Timer } from "./components/Timer";
 
 const socket = io("http://localhost:3001");
 const TIMER = 30;
@@ -17,83 +20,6 @@ type Topic = {
 type CardsMap = {
   [playerId: string]: string;
 };
-
-function PlayerCard({
-  name,
-  card,
-  editable,
-  isMe,
-  draftCard,
-  setDraftCard,
-  onSubmitCard,
-  submissionAllowed,
-  hasSubmitted,
-}: {
-  name: string;
-  card: string;
-  editable: boolean;
-  isMe: boolean;
-  draftCard?: string;
-  setDraftCard?: (value: string) => void;
-  onSubmitCard?: () => void;
-  submissionAllowed: boolean;
-  hasSubmitted: boolean;
-}) {
-  return (
-    <div
-      style={{
-        border: "2px solid #90caf9",
-        backgroundColor: isMe ? "#e3f2fd" : "#f0f0f0",
-        borderRadius: "10px",
-        padding: "1rem",
-        marginBottom: "1rem",
-      }}
-    >
-      <strong>{name}</strong>
-      {isMe && <span>（あなた）</span>}
-      <div style={{ marginTop: "0.5rem" }}>
-        {editable ? (
-          <>
-            <textarea
-              value={draftCard}
-              onChange={(e) => setDraftCard && setDraftCard(e.target.value)}
-              placeholder="カードの内容を入力"
-              style={{
-                width: "100%",
-                height: "80px",
-                padding: "0.5rem",
-                fontSize: "1rem",
-                borderRadius: "6px",
-              }}
-              disabled={!editable}
-            />
-            <button
-              onClick={onSubmitCard}
-              style={{
-                marginTop: "0.5rem",
-                padding: "0.3rem 0.7rem",
-                fontSize: "1rem",
-                cursor: editable ? "pointer" : "not-allowed",
-              }}
-              disabled={!draftCard || draftCard.trim() === "" || !editable}
-            >
-              提出
-            </button>
-          </>
-        ) : (
-          <p style={{ whiteSpace: "pre-wrap" }}>
-            {isMe
-              ? draftCard || card || "（考え中...）"
-              : hasSubmitted
-              ? card || "（提出済み）"
-              : "（考え中...）"
-            }
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function App() {
   const [name, setName] = useState("");
@@ -232,7 +158,7 @@ function App() {
   };
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
+    <div style={{ padding: "2rem", fontFamily: "sans-serif", position: "relative" }}>
       {!joined ? (
         <>
           <h2>名前を入力して参加</h2>
@@ -252,6 +178,22 @@ function App() {
         </>
       ) : (
         <>
+          {/* 右上にTimer固定配置 */}
+          <div
+            style={{
+              position: "absolute",
+              top: "1rem",
+              right: "1rem",
+              zIndex: 10,
+              backgroundColor: "#fff",
+              padding: "0.5rem 1rem",
+              borderRadius: "8px",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+            }}
+          >
+            <Timer timeLeft={timeLeft} />
+          </div>
+
           <h2>お題: {currentTopic ? currentTopic.title : "まだお題がありません"}</h2>
 
           {isHost ? (
@@ -266,8 +208,6 @@ function App() {
             <h3>親を当てましょう!</h3>
           )}
 
-          <p style={{ fontWeight: "bold" }}>カード入力 / 残り時間: {timeLeft}秒</p>
-
           <h2>カードの提出状況</h2>
           {players.map((p) => (
             <PlayerCard
@@ -278,14 +218,10 @@ function App() {
               isMe={p.id === socketId}
               draftCard={p.id === socketId ? draftCard : undefined}
               setDraftCard={
-                p.id === socketId && !submitted && submissionAllowed
-                  ? setDraftCard
-                  : undefined
+                p.id === socketId && !submitted && submissionAllowed ? setDraftCard : undefined
               }
               onSubmitCard={
-                p.id === socketId && !submitted && submissionAllowed
-                  ? handleSubmitCard
-                  : undefined
+                p.id === socketId && !submitted && submissionAllowed ? handleSubmitCard : undefined
               }
               submissionAllowed={submissionAllowed}
               hasSubmitted={submittedPlayers.has(p.id)}
