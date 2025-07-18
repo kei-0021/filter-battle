@@ -114,6 +114,7 @@ function App() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    console.log("reveal_cards イベントリスナー登録");
     socket.on(
       "players_update",
       ({ players, hostId }: { players: Player[]; hostId: string | null }) => {
@@ -162,6 +163,17 @@ function App() {
       setCards(newCards);
     });
 
+    socket.on("reveal_cards", (cardsData: CardsMap) => {
+      console.log("公開カード:", cardsData);
+      setCards(cardsData);
+      setSubmissionAllowed(false);
+      setTimeLeft(0);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    });
+
     socket.on("game_restarted", () => {
       setSubmitted(false);
       setDraftCard("");
@@ -186,12 +198,14 @@ function App() {
     });
 
     return () => {
+      console.log("reveal_cards イベントリスナー解除");
       socket.off("players_update");
       socket.off("ready_status");
       socket.off("topic_update");
       socket.off("submitted_update");
       socket.off("cards_update");
       socket.off("game_restarted");
+      socket.off("reveal_cards");
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
@@ -214,10 +228,6 @@ function App() {
     socket.emit("submit_card", draftCard.trim());
     setSubmitted(true);
     setSubmissionAllowed(false);
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
   };
 
   return (

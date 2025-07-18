@@ -46,6 +46,7 @@ function revealCards() {
   hiddenCards = {};
   io.emit("cards_update", cards);
   io.emit("submitted_update", Array.from(submittedPlayers)); // 追加：提出済み情報も送る
+  io.emit("reveal_cards", cards);  // ここを追加
   console.log("[revealCards] カード公開:", cards);
 }
 
