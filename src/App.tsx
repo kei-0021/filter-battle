@@ -84,11 +84,10 @@ function PlayerCard({
           <p style={{ whiteSpace: "pre-wrap" }}>
             {isMe
               ? draftCard || card || "（考え中...）"
-              : submissionAllowed
-              ? hasSubmitted
-                ? "(提出済み)"
-                : "（考え中...）"
-              : card || "（考え中...）"}
+              : hasSubmitted
+              ? card || "（提出済み）"
+              : "（考え中...）"
+            }
           </p>
         )}
       </div>
