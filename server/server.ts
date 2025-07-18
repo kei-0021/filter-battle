@@ -1,13 +1,21 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import { topics } from "./data/topic";
+
+// お題データをサーバーに直接持たせる例
+type Topic = {
+  id: number;
+  title: string;
+  filter: string;
+};
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173", // ワイルドカードではなく明示的に指定
-    credentials: true,               // withCredentials対応のためにcredentials:trueを入れる
+    origin: "http://localhost:5173", // 明示的に許可
+    credentials: true,
   },
 });
 
@@ -16,14 +24,26 @@ type Player = { id: string; name: string };
 let players: Player[] = [];
 let hostId: string | null = null;
 const readyPlayers = new Set<string>();
+let currentTopic: Topic | null = null;
+
+// トピックをランダムに切り替える関数
+function pickRandomTopic(): Topic {
+  const idx = Math.floor(Math.random() * topics.length);
+  return topics[idx];
+}
 
 io.on("connection", (socket) => {
   console.log("Connected:", socket.id);
 
   socket.on("join", (name: string) => {
     players.push({ id: socket.id, name });
-    if (players.length === 1) hostId = socket.id;
-    io.emit("players_update", { players, hostId });
+    if (players.length === 1) {
+      hostId = socket.id;
+      // 初回ホスト決定時にお題も決定
+      currentTopic = pickRandomTopic();
+    }
+
+    io.emit("players_update", { players, hostId, topic: currentTopic });
   });
 
   socket.on("ready_for_restart", () => {
@@ -35,24 +55,16 @@ io.on("connection", (socket) => {
     const totalCount = players.length;
     io.emit("ready_status", { readyCount, totalCount });
 
-    // サーバー側のsocket.io処理の中に追加（readyが全員揃ったあと）
     if (readyCount === totalCount) {
       console.log("All players ready! Restarting game...");
+      // ランダムに親を再決定
       const random = players[Math.floor(Math.random() * players.length)];
       hostId = random.id;
+      // お題もランダムで切り替え
+      currentTopic = pickRandomTopic();
       readyPlayers.clear();
-
-      const theme = getRandomTheme(); // ← お題を選ぶ関数を使う
-
-      io.emit("players_update", { players, hostId });
+      io.emit("players_update", { players, hostId, topic: currentTopic });
       io.emit("game_restarted");
-      io.emit("new_theme", theme); // ← ここで全員にお題を送信
-    }
-
-    // 補助関数：お題をランダムに選ぶ
-    function getRandomTheme() {
-      const themes = ["ラーメン", "未来の乗り物", "休日の過ごし方", "変な発明", "学校であった怖い話"];
-      return themes[Math.floor(Math.random() * themes.length)];
     }
   });
 
@@ -62,11 +74,13 @@ io.on("connection", (socket) => {
 
     if (socket.id === hostId && players.length > 0) {
       hostId = players[0].id;
+      // 親が抜けた場合はお題はそのまま維持してもOK
     } else if (players.length === 0) {
       hostId = null;
+      currentTopic = null;
     }
 
-    io.emit("players_update", { players, hostId });
+    io.emit("players_update", { players, hostId, topic: currentTopic });
     io.emit("ready_status", { readyCount: readyPlayers.size, totalCount: players.length });
   });
 });

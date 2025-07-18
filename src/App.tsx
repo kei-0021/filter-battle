@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 
-// サーバーURLは環境に応じて適宜変更してください
-const socket = io("http://localhost:3001", { withCredentials: true });
-
 type Player = { id: string; name: string };
+type Topic = {
+  id: number;
+  title: string;
+  filter: string;
+};
+
+const socket = io("http://localhost:3001", { withCredentials: true });
 
 export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -15,7 +19,7 @@ export default function App() {
   const [readyCount, setReadyCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [gameRestarted, setGameRestarted] = useState(false);
-  const [topic, setTopic] = useState(""); // 🆕 お題の状態を追加
+  const [topic, setTopic] = useState<Topic | null>(null);
 
   useEffect(() => {
     const onConnect = () => {
@@ -23,13 +27,18 @@ export default function App() {
       console.log("Connected with socket.id:", socket.id);
     };
 
-    const onPlayersUpdate = ({ players, hostId }: { players: Player[]; hostId: string | null }) => {
-      setPlayers(players);
-      setHostId(hostId);
+    const onPlayersUpdate = (data: {
+      players: Player[];
+      hostId: string | null;
+      topic: Topic | null;
+    }) => {
+      setPlayers(data.players);
+      setHostId(data.hostId);
+      setTopic(data.topic);
       setGameRestarted(false);
       setReadyCount(0);
-      setTotalCount(players.length);
-      console.log("Players updated:", players, "Host:", hostId);
+      setTotalCount(data.players.length);
+      console.log("Players updated:", data.players, "Host:", data.hostId, "Topic:", data.topic);
     };
 
     const onReadyStatus = ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
@@ -44,23 +53,16 @@ export default function App() {
       console.log("Game restarted!");
     };
 
-    const onTopic = (topic: string) => {
-      setTopic(topic);
-      console.log("Topic received:", topic);
-    };
-
     socket.on("connect", onConnect);
     socket.on("players_update", onPlayersUpdate);
     socket.on("ready_status", onReadyStatus);
     socket.on("game_restarted", onGameRestarted);
-    socket.on("topic", onTopic); // 🆕 お題リスナー追加
 
     return () => {
       socket.off("connect", onConnect);
       socket.off("players_update", onPlayersUpdate);
       socket.off("ready_status", onReadyStatus);
       socket.off("game_restarted", onGameRestarted);
-      socket.off("topic", onTopic); // 🆕 クリーンアップ
     };
   }, []);
 
@@ -100,7 +102,7 @@ export default function App() {
 
           <p>{isHost ? "あなたが親です" : "あなたは子です"}</p>
 
-          <p>お題: {topic || "未定"}</p> {/* 🆕 お題表示 */}
+          <h3>お題: {topic ? topic.title : "まだありません"}</h3>
 
           <button onClick={handleReady}>もう一回遊ぶ（親再決定）</button>
 
