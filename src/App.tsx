@@ -23,13 +23,17 @@ function PlayerCard({
   card,
   editable,
   isMe,
-  onChangeCard,
+  draftCard,
+  setDraftCard,
+  onSubmitCard,
 }: {
   name: string;
   card: string;
   editable: boolean;
   isMe: boolean;
-  onChangeCard: (newCard: string) => void;
+  draftCard?: string;
+  setDraftCard?: (value: string) => void;
+  onSubmitCard?: () => void;
 }) {
   return (
     <div
@@ -45,18 +49,33 @@ function PlayerCard({
       {isMe && <span>（あなた）</span>}
       <div style={{ marginTop: "0.5rem" }}>
         {editable ? (
-          <textarea
-            value={card}
-            onChange={(e) => onChangeCard(e.target.value)}
-            placeholder="カードの内容を入力"
-            style={{
-              width: "100%",
-              height: "80px",
-              padding: "0.5rem",
-              fontSize: "1rem",
-              borderRadius: "6px",
-            }}
-          />
+          <>
+            <textarea
+              value={draftCard}
+              onChange={(e) => setDraftCard && setDraftCard(e.target.value)}
+              placeholder="カードの内容を入力"
+              style={{
+                width: "100%",
+                height: "80px",
+                padding: "0.5rem",
+                fontSize: "1rem",
+                borderRadius: "6px",
+              }}
+              disabled={!editable}
+            />
+            <button
+              onClick={onSubmitCard}
+              style={{
+                marginTop: "0.5rem",
+                padding: "0.3rem 0.7rem",
+                fontSize: "1rem",
+                cursor: editable ? "pointer" : "not-allowed",
+              }}
+              disabled={!draftCard || draftCard.trim() === "" || !editable}
+            >
+              提出
+            </button>
+          </>
         ) : (
           <p style={{ whiteSpace: "pre-wrap" }}>{card || "（未入力）"}</p>
         )}
@@ -74,6 +93,8 @@ function App() {
   const [totalCount, setTotalCount] = useState(0);
   const [currentTopic, setCurrentTopic] = useState<Topic | null>(null);
   const [cards, setCards] = useState<CardsMap>({});
+  const [draftCard, setDraftCard] = useState("");
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     socket.on("players_update", ({ players, hostId }: { players: Player[]; hostId: string | null }) => {
@@ -88,10 +109,17 @@ function App() {
 
     socket.on("topic_update", (topic: Topic | null) => {
       setCurrentTopic(topic);
+      setDraftCard("");
+      setSubmitted(false); // お題変わったら提出状態リセット
     });
 
     socket.on("cards_update", (newCards: CardsMap) => {
       setCards(newCards);
+    });
+
+    socket.on("game_restarted", () => {
+      setSubmitted(false); // ゲーム再開時にもリセット
+      setDraftCard("");
     });
 
     return () => {
@@ -99,11 +127,12 @@ function App() {
       socket.off("ready_status");
       socket.off("topic_update");
       socket.off("cards_update");
+      socket.off("game_restarted");
     };
   }, []);
 
   const handleJoin = () => {
-    if (!name) return;
+    if (!name.trim()) return;
     socket.emit("join", name);
     setJoined(true);
   };
@@ -114,6 +143,12 @@ function App() {
 
   const socketId = socket.id;
   const isHost = socketId === hostId;
+
+  const handleSubmitCard = () => {
+    if (!draftCard.trim()) return;
+    socket.emit("submit_card", draftCard.trim());
+    setSubmitted(true);
+  };
 
   return (
     <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
@@ -133,37 +168,34 @@ function App() {
         </>
       ) : (
         <>
-        <h2>お題: {currentTopic ? currentTopic.title : "まだお題がありません"}</h2>
+          <h2>お題: {currentTopic ? currentTopic.title : "まだお題がありません"}</h2>
 
-        {isHost ? (
-          <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>あなたが親です</p>
-        ) : (
-          <h3>親を当てましょう!</h3>
-        )}
+          {isHost ? (
+            <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>あなたが親です</p>
+          ) : (
+            <h3>親を当てましょう!</h3>
+          )}
 
-        <h2>プレイヤーリスト</h2>
-        {players.map((p) => (
-          <PlayerCard
-            key={p.id}
-            name={p.name}
-            card={cards[p.id] || ""}
-            editable={p.id === socketId}
-            isMe={p.id === socketId}
-            onChangeCard={(newCard) => {
-              if (p.id === socketId) {
-                setCards((prev) => ({ ...prev, [p.id]: newCard }));
-                socket.emit("update_card", { card: newCard });
-              }
-            }}
-          />
-        ))}
+          <h2>プレイヤーリスト</h2>
+          {players.map((p) => (
+            <PlayerCard
+              key={p.id}
+              name={p.name}
+              card={cards[p.id] || ""}
+              editable={p.id === socketId && !submitted}
+              isMe={p.id === socketId}
+              draftCard={p.id === socketId ? draftCard : undefined}
+              setDraftCard={p.id === socketId && !submitted ? setDraftCard : undefined}
+              onSubmitCard={p.id === socketId && !submitted ? handleSubmitCard : undefined}
+            />
+          ))}
 
-        <button onClick={handleRestart} style={{ padding: "0.5rem 1rem" }}>
-          もう一度遊ぶ (全員準備完了で再スタート)
-        </button>
+          <button onClick={handleRestart} style={{ padding: "0.5rem 1rem" }}>
+            もう一度遊ぶ (全員準備完了で再スタート)
+          </button>
 
           <p>
-            {readyCount}人が準備済み、{totalCount - readyCount}人待ちです
+            {readyCount} / {totalCount}人が準備済みです
           </p>
         </>
       )}
