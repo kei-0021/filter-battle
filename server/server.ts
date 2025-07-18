@@ -1,6 +1,7 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import { filters } from "./data/filter";
 import { topics, type Topic } from "./data/topic";
 
 const app = express();
@@ -18,19 +19,24 @@ let players: Player[] = [];
 let hostId: string | null = null;
 const readyPlayers = new Set<string>();
 let currentTopic: Topic | null = null;
-const cards: { [playerId: string]: string } = {};  // 公開カード
-let hiddenCards: { [playerId: string]: string } = {};  // 提出済みだが未公開カード
-const submittedPlayers = new Set<string>(); // 追加：提出済みプレイヤー管理
+let currentFilter: string | null = null;  // 新規：現在のフィルター
+const cards: { [playerId: string]: string } = {};
+let hiddenCards: { [playerId: string]: string } = {};
+const submittedPlayers = new Set<string>();
 let submitTimer: NodeJS.Timeout | null = null;
-const SUBMIT_TIMEOUT_MS = 30_000; // 30秒制限
+const SUBMIT_TIMEOUT_MS = 30_000;
 
 function pickRandomTopic() {
   return topics[Math.floor(Math.random() * topics.length)];
 }
 
+function pickRandomFilter() {
+  return filters[Math.floor(Math.random() * filters.length)].toString();
+}
+
 function startSubmitPhase() {
   hiddenCards = {};
-  submittedPlayers.clear(); // 追加：リセット
+  submittedPlayers.clear();
   if (submitTimer) {
     clearTimeout(submitTimer);
   }
@@ -45,8 +51,8 @@ function revealCards() {
   Object.assign(cards, hiddenCards);
   hiddenCards = {};
   io.emit("cards_update", cards);
-  io.emit("submitted_update", Array.from(submittedPlayers)); // 追加：提出済み情報も送る
-  io.emit("reveal_cards", cards);  // ここを追加
+  io.emit("submitted_update", Array.from(submittedPlayers));
+  io.emit("reveal_cards", cards);
   console.log("[revealCards] カード公開:", cards);
 }
 
@@ -59,13 +65,15 @@ io.on("connection", (socket) => {
     if (players.length === 1) {
       hostId = socket.id;
       currentTopic = pickRandomTopic();
+      currentFilter = pickRandomFilter();
       startSubmitPhase();
       console.log("[join] 最初の参加者、submitフェーズ開始");
     }
     io.emit("players_update", { players, hostId });
     io.emit("topic_update", currentTopic);
+    io.emit("filter_update", currentFilter);  // 追加
     io.emit("cards_update", cards);
-    io.emit("submitted_update", Array.from(submittedPlayers)); // 追加
+    io.emit("submitted_update", Array.from(submittedPlayers));
   });
 
   socket.on("ready_for_restart", () => {
@@ -79,14 +87,16 @@ io.on("connection", (socket) => {
       const random = players[Math.floor(Math.random() * players.length)];
       hostId = random.id;
       currentTopic = pickRandomTopic();
+      currentFilter = pickRandomFilter();
       readyPlayers.clear();
       for (const pid in cards) delete cards[pid];
       hiddenCards = {};
-      submittedPlayers.clear(); // 追加
+      submittedPlayers.clear();
       io.emit("players_update", { players, hostId });
       io.emit("topic_update", currentTopic);
+      io.emit("filter_update", currentFilter);  // 追加
       io.emit("cards_update", cards);
-      io.emit("submitted_update", Array.from(submittedPlayers)); // 追加
+      io.emit("submitted_update", Array.from(submittedPlayers));
       io.emit("game_restarted");
 
       startSubmitPhase();
@@ -95,7 +105,7 @@ io.on("connection", (socket) => {
 
   socket.on("submit_card", (card: string) => {
     hiddenCards[socket.id] = card;
-    submittedPlayers.add(socket.id); // 追加
+    submittedPlayers.add(socket.id);
     const submittedCount = submittedPlayers.size;
     console.log(
       `[submit_card] ${socket.id} 提出: ${card}, 提出数: ${submittedCount} / ${players.length}`
@@ -104,7 +114,7 @@ io.on("connection", (socket) => {
       if (submitTimer) clearTimeout(submitTimer);
       revealCards();
     } else {
-      io.emit("submitted_update", Array.from(submittedPlayers)); // 途中経過も送る
+      io.emit("submitted_update", Array.from(submittedPlayers));
     }
   });
 
@@ -113,21 +123,23 @@ io.on("connection", (socket) => {
     readyPlayers.delete(socket.id);
     delete cards[socket.id];
     delete hiddenCards[socket.id];
-    submittedPlayers.delete(socket.id); // 追加
+    submittedPlayers.delete(socket.id);
     if (socket.id === hostId && players.length > 0) {
       hostId = players[0].id;
     } else if (players.length === 0) {
       hostId = null;
       currentTopic = null;
+      currentFilter = null;
       hiddenCards = {};
-      submittedPlayers.clear(); // 追加
+      submittedPlayers.clear();
       if (submitTimer) clearTimeout(submitTimer);
     }
     io.emit("players_update", { players, hostId });
     io.emit("ready_status", { readyCount: readyPlayers.size, totalCount: players.length });
     io.emit("topic_update", currentTopic);
+    io.emit("filter_update", currentFilter);  // 追加
     io.emit("cards_update", cards);
-    io.emit("submitted_update", Array.from(submittedPlayers)); // 追加
+    io.emit("submitted_update", Array.from(submittedPlayers));
   });
 });
 

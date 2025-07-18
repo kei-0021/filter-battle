@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
 const socket = io("http://localhost:3001");
-const TIMER = 30; // 提出可能時間（秒）
+const TIMER = 30;
 
 type Player = {
   id: string;
@@ -12,7 +12,6 @@ type Player = {
 type Topic = {
   id: number;
   title: string;
-  filter: string;
 };
 
 type CardsMap = {
@@ -105,6 +104,7 @@ function App() {
   const [readyCount, setReadyCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [currentTopic, setCurrentTopic] = useState<Topic | null>(null);
+  const [currentFilter, setCurrentFilter] = useState<string | null>(null);
   const [cards, setCards] = useState<CardsMap>({});
   const [draftCard, setDraftCard] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -114,7 +114,6 @@ function App() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    console.log("reveal_cards イベントリスナー登録");
     socket.on(
       "players_update",
       ({ players, hostId }: { players: Player[]; hostId: string | null }) => {
@@ -155,6 +154,10 @@ function App() {
       }, 1000);
     });
 
+    socket.on("filter_update", (filter: string | null) => {
+      setCurrentFilter(filter);
+    });
+
     socket.on("submitted_update", (submittedIds: string[]) => {
       setSubmittedPlayers(new Set(submittedIds));
     });
@@ -164,7 +167,6 @@ function App() {
     });
 
     socket.on("reveal_cards", (cardsData: CardsMap) => {
-      console.log("公開カード:", cardsData);
       setCards(cardsData);
       setSubmissionAllowed(false);
       setTimeLeft(0);
@@ -198,10 +200,10 @@ function App() {
     });
 
     return () => {
-      console.log("reveal_cards イベントリスナー解除");
       socket.off("players_update");
       socket.off("ready_status");
       socket.off("topic_update");
+      socket.off("filter_update");
       socket.off("submitted_update");
       socket.off("cards_update");
       socket.off("game_restarted");
@@ -256,6 +258,10 @@ function App() {
           {isHost ? (
             <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>
               あなたが親です
+              <br />
+              <span style={{ fontWeight: "normal", fontSize: "16px", color: "#555" }}>
+                フィルター: <strong>{currentFilter || "なし"}</strong> をテーマに書いてください
+              </span>
             </p>
           ) : (
             <h3>親を当てましょう!</h3>
@@ -263,7 +269,7 @@ function App() {
 
           <p style={{ fontWeight: "bold" }}>カード入力 / 残り時間: {timeLeft}秒</p>
 
-          <h2>プレイヤーリスト</h2>
+          <h2>カードの提出状況</h2>
           {players.map((p) => (
             <PlayerCard
               key={p.id}
