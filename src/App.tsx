@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
 const socket = io("http://localhost:3001");
+const TIMER = 30; // 提出可能時間（秒）
 
 type Player = {
   id: string;
@@ -26,6 +27,8 @@ function PlayerCard({
   draftCard,
   setDraftCard,
   onSubmitCard,
+  submissionAllowed,
+  hasSubmitted,
 }: {
   name: string;
   card: string;
@@ -34,6 +37,8 @@ function PlayerCard({
   draftCard?: string;
   setDraftCard?: (value: string) => void;
   onSubmitCard?: () => void;
+  submissionAllowed: boolean;
+  hasSubmitted: boolean;
 }) {
   return (
     <div
@@ -77,7 +82,15 @@ function PlayerCard({
             </button>
           </>
         ) : (
-          <p style={{ whiteSpace: "pre-wrap" }}>{card || "（未入力）"}</p>
+          <p style={{ whiteSpace: "pre-wrap" }}>
+            {isMe
+              ? draftCard || card || "（考え中...）"
+              : submissionAllowed
+              ? hasSubmitted
+                ? "(提出済み)"
+                : "（考え中...）"
+              : card || "（考え中...）"}
+          </p>
         )}
       </div>
     </div>
@@ -95,22 +108,54 @@ function App() {
   const [cards, setCards] = useState<CardsMap>({});
   const [draftCard, setDraftCard] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submissionAllowed, setSubmissionAllowed] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(TIMER);
+  const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    socket.on("players_update", ({ players, hostId }: { players: Player[]; hostId: string | null }) => {
-      setPlayers(players);
-      setHostId(hostId);
-    });
+    socket.on(
+      "players_update",
+      ({ players, hostId }: { players: Player[]; hostId: string | null }) => {
+        setPlayers(players);
+        setHostId(hostId);
+      }
+    );
 
-    socket.on("ready_status", ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
-      setReadyCount(readyCount);
-      setTotalCount(totalCount);
-    });
+    socket.on(
+      "ready_status",
+      ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
+        setReadyCount(readyCount);
+        setTotalCount(totalCount);
+      }
+    );
 
     socket.on("topic_update", (topic: Topic | null) => {
       setCurrentTopic(topic);
       setDraftCard("");
-      setSubmitted(false); // お題変わったら提出状態リセット
+      setSubmitted(false);
+      setSubmissionAllowed(true);
+      setTimeLeft(TIMER);
+      setSubmittedPlayers(new Set());
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            setSubmissionAllowed(false);
+            setSubmitted(true);
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    });
+
+    socket.on("submitted_update", (submittedIds: string[]) => {
+      setSubmittedPlayers(new Set(submittedIds));
     });
 
     socket.on("cards_update", (newCards: CardsMap) => {
@@ -118,16 +163,36 @@ function App() {
     });
 
     socket.on("game_restarted", () => {
-      setSubmitted(false); // ゲーム再開時にもリセット
+      setSubmitted(false);
       setDraftCard("");
+      setSubmissionAllowed(true);
+      setTimeLeft(TIMER);
+      setSubmittedPlayers(new Set());
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            setSubmissionAllowed(false);
+            setSubmitted(true);
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     });
 
     return () => {
       socket.off("players_update");
       socket.off("ready_status");
       socket.off("topic_update");
+      socket.off("submitted_update");
       socket.off("cards_update");
       socket.off("game_restarted");
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
 
@@ -145,9 +210,14 @@ function App() {
   const isHost = socketId === hostId;
 
   const handleSubmitCard = () => {
-    if (!draftCard.trim()) return;
+    if (!draftCard.trim() || !submissionAllowed) return;
     socket.emit("submit_card", draftCard.trim());
     setSubmitted(true);
+    setSubmissionAllowed(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   };
 
   return (
@@ -162,7 +232,10 @@ function App() {
             placeholder="名前"
             style={{ padding: "0.5rem", fontSize: "1rem" }}
           />
-          <button onClick={handleJoin} style={{ marginLeft: "1rem", padding: "0.5rem 1rem" }}>
+          <button
+            onClick={handleJoin}
+            style={{ marginLeft: "1rem", padding: "0.5rem 1rem" }}
+          >
             参加
           </button>
         </>
@@ -171,10 +244,14 @@ function App() {
           <h2>お題: {currentTopic ? currentTopic.title : "まだお題がありません"}</h2>
 
           {isHost ? (
-            <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>あなたが親です</p>
+            <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>
+              あなたが親です
+            </p>
           ) : (
             <h3>親を当てましょう!</h3>
           )}
+
+          <p style={{ fontWeight: "bold" }}>カード入力 / 残り時間: {timeLeft}秒</p>
 
           <h2>プレイヤーリスト</h2>
           {players.map((p) => (
@@ -182,11 +259,21 @@ function App() {
               key={p.id}
               name={p.name}
               card={cards[p.id] || ""}
-              editable={p.id === socketId && !submitted}
+              editable={p.id === socketId && !submitted && submissionAllowed}
               isMe={p.id === socketId}
               draftCard={p.id === socketId ? draftCard : undefined}
-              setDraftCard={p.id === socketId && !submitted ? setDraftCard : undefined}
-              onSubmitCard={p.id === socketId && !submitted ? handleSubmitCard : undefined}
+              setDraftCard={
+                p.id === socketId && !submitted && submissionAllowed
+                  ? setDraftCard
+                  : undefined
+              }
+              onSubmitCard={
+                p.id === socketId && !submitted && submissionAllowed
+                  ? handleSubmitCard
+                  : undefined
+              }
+              submissionAllowed={submissionAllowed}
+              hasSubmitted={submittedPlayers.has(p.id)}
             />
           ))}
 

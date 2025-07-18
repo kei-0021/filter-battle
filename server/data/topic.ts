@@ -10,7 +10,7 @@ export const topics: Topic[] = [
   { id: 3, title: "職場あるある", filter: "" },
   { id: 4, title: "コンビニあるある", filter: "" },
   { id: 5, title: "電車あるある", filter: "" },
-  { id: 6, title: "リモートワークあるある", filter: "" },
+  { id: 6, title: "リモート授業 / ワークあるある", filter: "" },
   { id: 7, title: "兄弟姉妹あるある", filter: "" },
   { id: 8, title: "料理あるある", filter: "" },
   { id: 9, title: "SNSあるある", filter: "" },
