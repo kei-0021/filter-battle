@@ -28,12 +28,18 @@ function App() {
   const [phase, setPhase] = useState<GamePhase>("submit");
 
   // 投票結果を保持
-  const [votingResults, setVotingResults] = useState<Record<string, number> | null>(null);
+  type VotingResults = {
+    scores: Record<string, number>;
+    voteCounts: Record<string, number>;
+    scoreDiffs: Record<string, number>;
+  };
+  const [votingResults, setVotingResults] = useState<VotingResults | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     socket.on("players_update", ({ players, filtererId }: { players: Player[]; filtererId: string | null }) => {
+      console.log("players_update受信:", filtererId);
       setPlayers(players);
       setFiltererId(filtererId);
     });
@@ -97,8 +103,12 @@ function App() {
       setVotingResults(null);
     });
 
-    socket.on("voting_results", (results: Record<string, number>) => {
-      setVotingResults(results);
+    socket.on("voting_results", ({ scores, voteCounts, scoreDiffs }: {
+      scores: Record<string, number>;
+      voteCounts: Record<string, number>;
+      scoreDiffs: Record<string, number>;
+    }) => {
+      setVotingResults({ scores, voteCounts , scoreDiffs });
       setPhase("results");
     });
 
@@ -220,7 +230,7 @@ function App() {
             )}
 
             <h2>カードの提出状況</h2>
-            {players.map((p) => (
+            {players?.map((p) => (
               <div
                 key={p.id}
                 onClick={() => {
@@ -279,7 +289,9 @@ function App() {
                 <ul>
                   {players.map((p) => (
                     <li key={p.id}>
-                      {p.name}: {votingResults[p.id] ?? 0}票
+                      {p.name}: {votingResults.voteCounts[p.id] ?? 0}票 / スコア: {votingResults.scores[p.id] ?? 0}（
+                        {votingResults.scoreDiffs[p.id] > 0 ? `+${votingResults.scoreDiffs[p.id]}` : votingResults.scoreDiffs[p.id] ?? 0}
+                      ）
                     </li>
                   ))}
                 </ul>

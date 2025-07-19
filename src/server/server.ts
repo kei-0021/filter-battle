@@ -2,7 +2,8 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import { topics } from "../../data/topic";
-import { GameState, type TopicWithFilters } from "../shared/types";
+import { GameState, Player, TopicWithFilters } from "../shared/types";
+import { calculateScores } from "./calculateScores";
 
 const app = express();
 const server = http.createServer(app);
@@ -17,25 +18,27 @@ const SUBMIT_TIMEOUT_MS = 30_000;
 
 const gameState: GameState = {
   players: [],
-  readyPlayers: new Set(),
+  readyPlayers: new Set<string>(),
   currentTopic: null,
   currentFilter: null,
   filtererId: null,
   phase: "submit",
   cards: {},
   hiddenCards: {},
-  submittedPlayers: new Set(),
+  submittedPlayers: new Set<string>(),
   submitTimer: null,
   votes: {},
   scores: {},
 };
 
-function pickRandomTopic() {
-  return topics[Math.floor(Math.random() * topics.length)];
+function pickRandomTopic(): TopicWithFilters | null {
+  if (!topics.length) return null;
+  const idx = Math.floor(Math.random() * topics.length);
+  return topics[idx];
 }
 
-function pickRandomFilter(topic: TopicWithFilters | null) {
-  if (!topic || topic.filters.length === 0) return null;
+function pickRandomFilter(topic: TopicWithFilters | null): string | null {
+  if (!topic || !topic.filters.length) return null;
   const idx = Math.floor(Math.random() * topic.filters.length);
   return topic.filters[idx];
 }
@@ -58,7 +61,6 @@ function startSubmitPhase() {
 function revealCards() {
   gameState.phase = "reveal";
   console.log(`[Phase] revealフェーズ開始`);
-  // hiddenCardsをcardsに反映
   Object.assign(gameState.cards, gameState.hiddenCards);
   const revealed = { ...gameState.cards };
   gameState.hiddenCards = {};
@@ -73,8 +75,10 @@ io.on("connection", (socket) => {
   console.log("Connected:", socket.id);
 
   socket.on("join", (name: string) => {
-    gameState.players.push({ id: socket.id, name });
+    const newPlayer: Player = { id: socket.id, name };
+    gameState.players.push(newPlayer);
     console.log(`[join] ${name} (${socket.id}) が参加`);
+
     if (gameState.players.length === 1) {
       gameState.filtererId = socket.id;
       gameState.currentTopic = pickRandomTopic();
@@ -82,6 +86,7 @@ io.on("connection", (socket) => {
       startSubmitPhase();
       console.log("[join] 最初の参加者、submitフェーズ開始");
     }
+
     io.emit("players_update", { players: gameState.players, filtererId: gameState.filtererId });
     io.emit("topic_update", gameState.currentTopic);
     io.emit("filter_update", gameState.currentFilter);
@@ -98,15 +103,16 @@ io.on("connection", (socket) => {
 
     if (readyCount === totalCount) {
       console.log("All players ready! Restarting game...");
-      const random = gameState.players[Math.floor(Math.random() * gameState.players.length)];
-      gameState.filtererId = random.id;
+      const randomPlayer = gameState.players[Math.floor(Math.random() * gameState.players.length)];
+      gameState.filtererId = randomPlayer.id;
       gameState.currentTopic = pickRandomTopic();
       gameState.currentFilter = pickRandomFilter(gameState.currentTopic);
       gameState.readyPlayers.clear();
-      for (const pid in gameState.cards) delete gameState.cards[pid];
+      gameState.cards = {};
       gameState.hiddenCards = {};
       gameState.submittedPlayers.clear();
       gameState.phase = "submit";
+
       io.emit("players_update", { players: gameState.players, filtererId: gameState.filtererId });
       io.emit("topic_update", gameState.currentTopic);
       io.emit("filter_update", gameState.currentFilter);
@@ -114,6 +120,7 @@ io.on("connection", (socket) => {
       io.emit("submitted_update", Array.from(gameState.submittedPlayers));
       io.emit("game_restarted");
       io.emit("phase_update", gameState.phase);
+
       startSubmitPhase();
     }
   });
@@ -126,9 +133,8 @@ io.on("connection", (socket) => {
     gameState.hiddenCards[socket.id] = card;
     gameState.submittedPlayers.add(socket.id);
     const submittedCount = gameState.submittedPlayers.size;
-    console.log(
-      `[submit_card] ${socket.id} 提出: ${card}, 提出数: ${submittedCount} / ${gameState.players.length}`
-    );
+    console.log(`[submit_card] ${socket.id} 提出: ${card}, 提出数: ${submittedCount} / ${gameState.players.length}`);
+
     if (submittedCount === gameState.players.length) {
       if (gameState.submitTimer) clearTimeout(gameState.submitTimer);
       revealCards();
@@ -161,20 +167,35 @@ io.on("connection", (socket) => {
 
     if (Object.keys(gameState.votes).length === gameState.players.length) {
       console.log("[vote] 全員投票完了 集計開始");
-      const results: Record<string, number> = {};
+
+      const voteCounts: Record<string, number> = {};
       Object.values(gameState.votes).forEach((votedId) => {
-        results[votedId] = (results[votedId] || 0) + 1;
+        voteCounts[votedId] = (voteCounts[votedId] || 0) + 1;
       });
 
-      console.log("[vote] 投票結果:", results);
+      // 今回のスコアを計算（calculateScoresが今回スコアを返す想定）
+      const currentScores = calculateScores(gameState);
 
-      io.emit("voting_results", results);
+      // 累積スコアに足し合わせる
+      const scoreDiffs: Record<string, number> = {};
+      for (const playerId in currentScores) {
+        const prevScore = gameState.scores[playerId] || 0;
+        scoreDiffs[playerId] = currentScores[playerId];
+        gameState.scores[playerId] = prevScore + currentScores[playerId];
+      }
+
+      console.log("[vote] 投票結果:", gameState.scores, voteCounts);
+
+      io.emit("voting_results", {
+        scores: gameState.scores,
+        voteCounts,
+        scoreDiffs,
+      });
 
       gameState.phase = "results";
       io.emit("phase_update", gameState.phase);
 
-      // 投票情報クリア
-      for (const key in gameState.votes) delete gameState.votes[key];
+      gameState.votes = {};
     }
   });
 
@@ -186,17 +207,21 @@ io.on("connection", (socket) => {
     delete gameState.hiddenCards[socket.id];
     gameState.submittedPlayers.delete(socket.id);
     delete gameState.votes[socket.id];
-    if (socket.id === gameState.filtererId && gameState.players.length > 0) {
-      gameState.filtererId = gameState.players[0].id;
-    } else if (gameState.players.length === 0) {
-      gameState.filtererId = null;
-      gameState.currentTopic = null;
-      gameState.currentFilter = null;
-      gameState.hiddenCards = {};
-      gameState.submittedPlayers.clear();
-      gameState.phase = "submit";
-      if (gameState.submitTimer) clearTimeout(gameState.submitTimer);
+
+    if (socket.id === gameState.filtererId) {
+      if (gameState.players.length > 0) {
+        gameState.filtererId = gameState.players[0].id;
+      } else {
+        gameState.filtererId = null;
+        gameState.currentTopic = null;
+        gameState.currentFilter = null;
+        gameState.hiddenCards = {};
+        gameState.submittedPlayers.clear();
+        gameState.phase = "submit";
+        if (gameState.submitTimer) clearTimeout(gameState.submitTimer);
+      }
     }
+
     io.emit("players_update", { players: gameState.players, filtererId: gameState.filtererId });
     io.emit("ready_status", { readyCount: gameState.readyPlayers.size, totalCount: gameState.players.length });
     io.emit("topic_update", gameState.currentTopic);
