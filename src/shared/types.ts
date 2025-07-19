@@ -12,6 +12,7 @@ export interface Player {
 
 /** お題とそのフィルターリスト */
 export interface TopicWithFilters {
+  id: number;
   title: string;
   filters: string[];
 }

@@ -12,7 +12,7 @@ function App() {
   const [name, setName] = useState("");
   const [joined, setJoined] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [hostId, setHostId] = useState<string | null>(null);
+  const [filtererId, setFiltererId] = useState<string | null>(null);
   const [readyCount, setReadyCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -27,15 +27,15 @@ function App() {
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
   const [phase, setPhase] = useState<GamePhase>("submit");
 
-  // ここを追加：投票結果を保持
+  // 投票結果を保持
   const [votingResults, setVotingResults] = useState<Record<string, number> | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    socket.on("players_update", ({ players, hostId }: { players: Player[]; hostId: string | null }) => {
+    socket.on("players_update", ({ players, filtererId }: { players: Player[]; filtererId: string | null }) => {
       setPlayers(players);
-      setHostId(hostId);
+      setFiltererId(filtererId);
     });
 
     socket.on("ready_status", ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
@@ -50,7 +50,7 @@ function App() {
       setSubmissionAllowed(true);
       setTimeLeft(TIMER);
       setSubmittedPlayers(new Set());
-      setVotingResults(null); // 投票結果リセット
+      setVotingResults(null);
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
@@ -97,7 +97,6 @@ function App() {
       setVotingResults(null);
     });
 
-    // ここで投票結果を受け取る
     socket.on("voting_results", (results: Record<string, number>) => {
       setVotingResults(results);
       setPhase("results");
@@ -165,7 +164,7 @@ function App() {
   };
 
   const socketId = socket.id;
-  const isHost = socketId === hostId;
+  const isFilterer = socketId === filtererId;
 
   return (
     <div
@@ -182,9 +181,7 @@ function App() {
         <Title onJoin={handleJoin} />
       ) : (
         <>
-          {/* メインコンテンツ */}
           <div style={{ flexGrow: 1 }}>
-            {/* 右上にTimer固定配置 */}
             <div
               style={{
                 position: "absolute",
@@ -210,7 +207,7 @@ function App() {
 
             <h2>お題: {currentTopic ? currentTopic.title : "まだお題がありません"}</h2>
 
-            {isHost ? (
+            {isFilterer ? (
               <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>
                 あなたがフィルタラーです
                 <br />
@@ -276,7 +273,6 @@ function App() {
               </button>
             )}
 
-            {/* ここから投票結果表示 */}
             {phase === "results" && votingResults && (
               <>
                 <h2>投票結果</h2>
@@ -291,7 +287,6 @@ function App() {
             )}
           </div>
 
-          {/* フッター部分 */}
           <div
             style={{
               paddingTop: "2rem",
