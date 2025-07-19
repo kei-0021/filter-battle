@@ -25,6 +25,7 @@ function App() {
   const [submissionAllowed, setSubmissionAllowed] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER);
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
+  const [votedPlayerId, setVotedPlayerId] = useState<string | null>(null);
   const [phase, setPhase] = useState<GamePhase>("submit");
 
   // 投票結果を保持
@@ -41,7 +42,6 @@ function App() {
     socket.on("players_update", ({ players, filtererId }: { players: Player[]; filtererId: string | null }) => {
       console.log("players_update受信:", filtererId);
       setPlayers(players);
-      setFiltererId(filtererId);
     });
 
     socket.on("ready_status", ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
@@ -159,6 +159,7 @@ function App() {
 
   const handleVote = (playerId: string) => {
     if (phase !== "voting") return;
+    setVotedPlayerId(playerId);  // ここで投票した相手のIDを状態にセット
     socket.emit("vote", playerId);
   };
 
@@ -261,6 +262,8 @@ function App() {
                       ? () => handleVote(p.id)
                       : undefined
                   }
+                  voted={p.id === votedPlayerId}
+                  isFilterer={phase === "results" && p.id === filtererId}
                 />
               </div>
             ))}
