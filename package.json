@@ -6,7 +6,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "ts-node src/server/server.ts",
-    "start": "concurrently \"npm run server\" \"npm run dev\""
+    "start": "node dist/server.js",
+    "start:dev": "concurrently \"npm run server\" \"npm run dev\""
   },
   "dependencies": {
     "express": "^4.18.2",
