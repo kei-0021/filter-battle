@@ -2,6 +2,3 @@ node_modules/
 .DS_Store
 dist/
 dist-server/
-
-.env
-!.env.production
