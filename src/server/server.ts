@@ -24,8 +24,10 @@ const submittedPlayers = new Set<string>();
 let submitTimer: NodeJS.Timeout | null = null;
 const SUBMIT_TIMEOUT_MS = 30_000;
 
-// フェーズ管理
 let phase: Phase = "submit";
+
+// 投票管理 playerId（投票者） -> playerId（投票先）
+const votes: Record<string, string> = {};
 
 function pickRandomTopic() {
   return topics[Math.floor(Math.random() * topics.length)];
@@ -143,12 +145,45 @@ io.on("connection", (socket) => {
     io.emit("voting_started");
   });
 
+  socket.on("vote", (playerId: string) => {
+    if (phase !== "voting") {
+      console.log("[vote] votingフェーズ以外の投票は無視");
+      return;
+    }
+    if (!players.find((p) => p.id === playerId)) {
+      console.log("[vote] 無効な投票先:", playerId);
+      return;
+    }
+    votes[socket.id] = playerId;
+    console.log(`[vote] ${socket.id} が ${playerId} に投票`);
+
+    if (Object.keys(votes).length === players.length) {
+      console.log("[vote] 全員投票完了 集計開始");
+      const results: Record<string, number> = {};
+      Object.values(votes).forEach((votedId) => {
+        results[votedId] = (results[votedId] || 0) + 1;
+      });
+
+      console.log("[vote] 投票結果:", results);
+
+      io.emit("voting_results", results);
+
+      phase = "results";
+      io.emit("phase_update", phase);
+
+      // 投票情報クリア
+      for (const key in votes) delete votes[key];
+    }
+  });
+
   socket.on("disconnect", () => {
+    console.log("Disconnected:", socket.id);
     players = players.filter((p) => p.id !== socket.id);
     readyPlayers.delete(socket.id);
     delete cards[socket.id];
     delete hiddenCards[socket.id];
     submittedPlayers.delete(socket.id);
+    delete votes[socket.id];
     if (socket.id === hostId && players.length > 0) {
       hostId = players[0].id;
     } else if (players.length === 0) {

@@ -25,26 +25,23 @@ function App() {
   const [submissionAllowed, setSubmissionAllowed] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER);
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
   const [phase, setPhase] = useState<Phase>("submit");
 
-  useEffect(() => {
-    socket.on(
-      "players_update",
-      ({ players, hostId }: { players: Player[]; hostId: string | null }) => {
-        setPlayers(players);
-        setHostId(hostId);
-      }
-    );
+  // ここを追加：投票結果を保持
+  const [votingResults, setVotingResults] = useState<Record<string, number> | null>(null);
 
-    socket.on(
-      "ready_status",
-      ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
-        setReadyCount(readyCount);
-        setTotalCount(totalCount);
-      }
-    );
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    socket.on("players_update", ({ players, hostId }: { players: Player[]; hostId: string | null }) => {
+      setPlayers(players);
+      setHostId(hostId);
+    });
+
+    socket.on("ready_status", ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
+      setReadyCount(readyCount);
+      setTotalCount(totalCount);
+    });
 
     socket.on("topic_update", (topic: TopicWithFilters | null) => {
       setCurrentTopic(topic);
@@ -53,6 +50,7 @@ function App() {
       setSubmissionAllowed(true);
       setTimeLeft(TIMER);
       setSubmittedPlayers(new Set());
+      setVotingResults(null); // 投票結果リセット
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
@@ -91,10 +89,18 @@ function App() {
         timerRef.current = null;
       }
       setPhase("reveal");
+      setVotingResults(null);
     });
 
     socket.on("voting_started", () => {
       setPhase("voting");
+      setVotingResults(null);
+    });
+
+    // ここで投票結果を受け取る
+    socket.on("voting_results", (results: Record<string, number>) => {
+      setVotingResults(results);
+      setPhase("results");
     });
 
     socket.on("game_restarted", () => {
@@ -103,6 +109,7 @@ function App() {
       setSubmissionAllowed(true);
       setTimeLeft(TIMER);
       setSubmittedPlayers(new Set());
+      setVotingResults(null);
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
@@ -129,6 +136,8 @@ function App() {
       socket.off("cards_update");
       socket.off("game_restarted");
       socket.off("reveal_cards");
+      socket.off("voting_started");
+      socket.off("voting_results");
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
@@ -139,12 +148,14 @@ function App() {
     setJoined(true);
   };
 
+  const handleVote = (playerId: string) => {
+    if (phase !== "voting") return;
+    socket.emit("vote", playerId);
+  };
+
   const handleRestart = () => {
     socket.emit("ready_for_restart");
   };
-
-  const socketId = socket.id;
-  const isHost = socketId === hostId;
 
   const handleSubmitCard = () => {
     if (!draftCard.trim() || !submissionAllowed) return;
@@ -152,6 +163,9 @@ function App() {
     setSubmitted(true);
     setSubmissionAllowed(false);
   };
+
+  const socketId = socket.id;
+  const isHost = socketId === hostId;
 
   return (
     <div
@@ -210,22 +224,38 @@ function App() {
 
             <h2>カードの提出状況</h2>
             {players.map((p) => (
-              <PlayerCard
+              <div
                 key={p.id}
-                name={p.name}
-                card={cards[p.id] || ""}
-                editable={p.id === socketId && !submitted && submissionAllowed}
-                isMe={p.id === socketId}
-                draftCard={p.id === socketId ? draftCard : undefined}
-                setDraftCard={
-                  p.id === socketId && !submitted && submissionAllowed ? setDraftCard : undefined
-                }
-                onSubmitCard={
-                  p.id === socketId && !submitted && submissionAllowed ? handleSubmitCard : undefined
-                }
-                submissionAllowed={submissionAllowed}
-                hasSubmitted={submittedPlayers.has(p.id)}
-              />
+                onClick={() => {
+                  if (phase === "voting" && p.id !== socketId) {
+                    handleVote(p.id);
+                  }
+                }}
+                style={{
+                  cursor: phase === "voting" && p.id !== socketId ? "pointer" : "default",
+                }}
+              >
+                <PlayerCard
+                  name={p.name}
+                  card={cards[p.id] || ""}
+                  editable={p.id === socketId && !submitted && submissionAllowed}
+                  isMe={p.id === socketId}
+                  draftCard={p.id === socketId ? draftCard : undefined}
+                  setDraftCard={
+                    p.id === socketId && !submitted && submissionAllowed ? setDraftCard : undefined
+                  }
+                  onSubmitCard={
+                    p.id === socketId && !submitted && submissionAllowed ? handleSubmitCard : undefined
+                  }
+                  submissionAllowed={submissionAllowed}
+                  hasSubmitted={submittedPlayers.has(p.id)}
+                  onVote={
+                    phase === "voting" && p.id !== socketId
+                      ? () => handleVote(p.id)
+                      : undefined
+                  }
+                />
+              </div>
             ))}
 
             {phase === "reveal" && (
@@ -245,6 +275,20 @@ function App() {
                 投票に移る
               </button>
             )}
+
+            {/* ここから投票結果表示 */}
+            {phase === "results" && votingResults && (
+              <>
+                <h2>投票結果</h2>
+                <ul>
+                  {players.map((p) => (
+                    <li key={p.id}>
+                      {p.name}: {votingResults[p.id] ?? 0}票
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </div>
 
           {/* フッター部分 */}
@@ -258,7 +302,6 @@ function App() {
             <button onClick={handleRestart} style={{ padding: "0.5rem 1rem" }}>
               もう一度遊ぶ (全員準備完了で再スタート)
             </button>
-
             <p style={{ marginTop: "0.5rem" }}>
               {readyCount} / {totalCount}人が準備済みです
             </p>
@@ -268,4 +311,5 @@ function App() {
     </div>
   );
 }
+
 export default App;

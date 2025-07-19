@@ -9,6 +9,7 @@ type PlayerCardProps = {
   onSubmitCard?: () => void;
   submissionAllowed: boolean;
   hasSubmitted: boolean;
+  onVote?: () => void; // 投票クリック用
 };
 
 export const PlayerCard = ({
@@ -21,6 +22,7 @@ export const PlayerCard = ({
   onSubmitCard,
   submissionAllowed,
   hasSubmitted,
+  onVote,
 }: PlayerCardProps) => {
   return (
     <div
