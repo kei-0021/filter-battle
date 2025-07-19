@@ -1,5 +1,5 @@
 {
-  "name": "My Filter App",
+  "name": "Filter Buttle",
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."

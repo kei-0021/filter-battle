@@ -1,5 +1,6 @@
 import express from "express";
 import http from "http";
+import path from "path";
 import { Server } from "socket.io";
 import { topics } from "../../data/topic";
 import { GameState, Player, TopicWithFilters } from "../shared/types";
@@ -16,6 +17,13 @@ const io = new Server(server, {
     origin: allowedOrigins,
     credentials: true,
   },
+});
+
+// Viteでビルドした静的ファイルを提供
+app.use(express.static(path.join(__dirname, "dist")));
+
+app.get("*", (_, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
 const SUBMIT_TIMEOUT_MS = 30_000;
