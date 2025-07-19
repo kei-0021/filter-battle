@@ -5,7 +5,8 @@ import { Timer } from "./components/Timer";
 import { Title } from "./pages/Title";
 import { CardsMap, GamePhase, Player, TopicWithFilters } from "./shared/types";
 
-const socket = io("http://localhost:3001");
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "http://localhost:3001";
+const socket = io(SOCKET_URL);
 const TIMER = 30;
 
 function App() {
