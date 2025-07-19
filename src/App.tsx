@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { PlayerCard } from "./components/PlayerCard";
 import { Timer } from "./components/Timer";
+import { Title } from "./pages/Title";
 
 const socket = io("http://localhost:3001");
 const TIMER = 30;
@@ -29,10 +30,7 @@ function App() {
   const [readyCount, setReadyCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
-  // currentTopicにfiltersが含まれる型に変更
   const [currentTopic, setCurrentTopic] = useState<TopicWithFilters | null>(null);
-
-  // currentFilterはフィルタラーに割り当てられたフィルターを保持
   const [currentFilter, setCurrentFilter] = useState<string | null>(null);
 
   const [cards, setCards] = useState<CardsMap>({});
@@ -84,7 +82,6 @@ function App() {
       }, 1000);
     });
 
-    // フィルターはフィルタラーに割り当て済みで来る想定ならイベントで更新しないかも
     socket.on("filter_update", (filter: string | null) => {
       setCurrentFilter(filter);
     });
@@ -143,9 +140,9 @@ function App() {
     };
   }, []);
 
-  const handleJoin = () => {
-    if (!name.trim()) return;
-    socket.emit("join", name);
+  const handleJoin = (joinName: string) => {
+    setName(joinName);
+    socket.emit("join", joinName);
     setJoined(true);
   };
 
@@ -166,22 +163,7 @@ function App() {
   return (
     <div style={{ padding: "2rem", fontFamily: "sans-serif", position: "relative" }}>
       {!joined ? (
-        <>
-          <h2>名前を入力して参加</h2>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="名前"
-            style={{ padding: "0.5rem", fontSize: "1rem" }}
-          />
-          <button
-            onClick={handleJoin}
-            style={{ marginLeft: "1rem", padding: "0.5rem 1rem" }}
-          >
-            参加
-          </button>
-        </>
+        <Title onJoin={handleJoin} />
       ) : (
         <>
           {/* 右上にTimer固定配置 */}
@@ -234,7 +216,7 @@ function App() {
             />
           ))}
 
-          <button onClick={handleRestart} style={{ padding: "0.5rem 1rem" }}>
+          <button onClick={handleRestart} style={{ padding: "0.5rem 1rem", marginTop: "1rem" }}>
             もう一度遊ぶ (全員準備完了で再スタート)
           </button>
 
