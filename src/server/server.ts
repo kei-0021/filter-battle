@@ -31,6 +31,12 @@ const gameState: GameState = {
   scores: {},
 };
 
+function pickRandomPlayer(): string | null {
+  if (gameState.players.length === 0) return null;
+  const randomIndex = Math.floor(Math.random() * gameState.players.length);
+  return gameState.players[randomIndex].id;
+}
+
 function pickRandomTopic(): TopicWithFilters | null {
   if (!topics.length) return null;
   const idx = Math.floor(Math.random() * topics.length);
@@ -102,15 +108,19 @@ io.on("connection", (socket) => {
     io.emit("ready_status", { readyCount, totalCount });
 
     if (readyCount === totalCount) {
-      console.log("All players ready! Restarting game...");
-      const randomPlayer = gameState.players[Math.floor(Math.random() * gameState.players.length)];
-      gameState.filtererId = randomPlayer.id;
+      // ランダムにフィルタラーを選ぶ
+      gameState.filtererId = pickRandomPlayer();
+
+      // 新しいトピックとフィルターを選ぶ
       gameState.currentTopic = pickRandomTopic();
       gameState.currentFilter = pickRandomFilter(gameState.currentTopic);
+
+      // スコアや提出状況などリセット
       gameState.readyPlayers.clear();
       gameState.cards = {};
       gameState.hiddenCards = {};
       gameState.submittedPlayers.clear();
+      gameState.votes = {};
       gameState.phase = "submit";
 
       io.emit("players_update", { players: gameState.players, filtererId: gameState.filtererId });
@@ -118,12 +128,12 @@ io.on("connection", (socket) => {
       io.emit("filter_update", gameState.currentFilter);
       io.emit("cards_update", gameState.cards);
       io.emit("submitted_update", Array.from(gameState.submittedPlayers));
-      io.emit("game_restarted");
       io.emit("phase_update", gameState.phase);
 
       startSubmitPhase();
     }
   });
+
 
   socket.on("submit_card", (card: string) => {
     if (gameState.phase !== "submit") {
