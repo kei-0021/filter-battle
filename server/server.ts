@@ -50,11 +50,12 @@ function startSubmitPhase() {
 
 function revealCards() {
   Object.assign(cards, hiddenCards);
+  const revealed = { ...cards };  // 👈 新しいオブジェクトを作る
   hiddenCards = {};
-  io.emit("cards_update", cards);
+  io.emit("cards_update", revealed);  // 👈 こっちを送る
   io.emit("submitted_update", Array.from(submittedPlayers));
-  io.emit("reveal_cards", cards);
-  console.log("[revealCards] カード公開:", cards);
+  io.emit("reveal_cards", revealed);  // 👈 こっちも
+  console.log("[revealCards] カード公開:", revealed);
 }
 
 io.on("connection", (socket) => {
