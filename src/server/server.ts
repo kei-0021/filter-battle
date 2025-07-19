@@ -2,7 +2,7 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import { topics, type TopicWithFilters } from "../../data/topic";
-import { CardsMap, Phase, Player } from "../shared/types";
+import { CardsMap, GamePhase, Player } from "../shared/types";
 
 const app = express();
 const server = http.createServer(app);
@@ -24,7 +24,7 @@ const submittedPlayers = new Set<string>();
 let submitTimer: NodeJS.Timeout | null = null;
 const SUBMIT_TIMEOUT_MS = 30_000;
 
-let phase: Phase = "submit";
+let phase: GamePhase = "submit";
 
 // 投票管理 playerId（投票者） -> playerId（投票先）
 const votes: Record<string, string> = {};

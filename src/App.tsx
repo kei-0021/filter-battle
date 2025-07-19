@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 import { PlayerCard } from "./components/PlayerCard";
 import { Timer } from "./components/Timer";
 import { Title } from "./pages/Title";
-import { CardsMap, Phase, Player, TopicWithFilters } from "./shared/types";
+import { CardsMap, GamePhase, Player, TopicWithFilters } from "./shared/types";
 
 const socket = io("http://localhost:3001");
 const TIMER = 30;
@@ -25,7 +25,7 @@ function App() {
   const [submissionAllowed, setSubmissionAllowed] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER);
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
-  const [phase, setPhase] = useState<Phase>("submit");
+  const [phase, setPhase] = useState<GamePhase>("submit");
 
   // ここを追加：投票結果を保持
   const [votingResults, setVotingResults] = useState<Record<string, number> | null>(null);
