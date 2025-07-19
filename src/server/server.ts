@@ -2,16 +2,27 @@ import express from "express";
 import http from "http";
 import path from "path";
 import { Server } from "socket.io";
+import { fileURLToPath } from "url"; // ESModules で __dirname を使うため
 import { topics } from "../../data/topic";
 import { GameState, Player, TopicWithFilters } from "../shared/types";
 import { calculateScores } from "./calculateScores";
 
+// __dirname を取得（ESModules対策）
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// dist パス（Viteでビルドした静的ファイル）
+const distPath = path.join(__dirname, "../../dist");
+
 const app = express();
 const server = http.createServer(app);
+
+// CORS 許可ドメイン
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://filter-buttle.onrender.com", // ここを本番URLに変更
+  "https://filter-buttle.onrender.com", // 本番URL
 ];
+
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -19,12 +30,22 @@ const io = new Server(server, {
   },
 });
 
-// Viteでビルドした静的ファイルを提供
-app.use(express.static(path.join(__dirname, "dist")));
+// 静的ファイル提供（例: dist/index.html, dist/assets/...）
+app.use(express.static(distPath));
 
+// SPAルーティングのため catch-all
 app.get("*", (_, res) => {
-  res.sendFile(path.join(__dirname, "dist", "index.html"));
+  res.sendFile(path.join(distPath, "index.html"));
 });
+
+// Socket.IOのロジック（必要ならここに追加）
+
+// サーバー起動
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+  console.log(`✅ Server listening on port ${PORT}`);
+});
+
 
 const SUBMIT_TIMEOUT_MS = 30_000;
 
