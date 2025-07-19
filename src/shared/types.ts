@@ -10,7 +10,7 @@ export interface TopicWithFilters {
   filters: string[];
 }
 
-export type CardMap = {
+export type CardsMap = {
   [playerId: string]: string;
 };
 

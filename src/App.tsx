@@ -3,24 +3,10 @@ import { io } from "socket.io-client";
 import { PlayerCard } from "./components/PlayerCard";
 import { Timer } from "./components/Timer";
 import { Title } from "./pages/Title";
+import { CardsMap, Phase, Player, TopicWithFilters } from "./shared/types";
 
 const socket = io("http://localhost:3001");
 const TIMER = 30;
-
-type Player = {
-  id: string;
-  name: string;
-};
-
-type TopicWithFilters = {
-  id: number;
-  title: string;
-  filters: string[];
-};
-
-type CardsMap = {
-  [playerId: string]: string;
-};
 
 function App() {
   const [name, setName] = useState("");
@@ -41,7 +27,7 @@ function App() {
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [phase, setPhase] = useState<"submit" | "reveal" | "voting" | "results">("submit");
+  const [phase, setPhase] = useState<Phase>("submit");
 
   useEffect(() => {
     socket.on(
@@ -203,7 +189,7 @@ function App() {
               >
                 {phase === "submit" && "フェーズ: カード提出"}
                 {phase === "reveal" && "フェーズ: カード公開"}
-                {phase === "voting" && "フェーズ: 投票"}
+                {phase === "voting" && "フェーズ: 投票受付中"}
                 {phase === "results" && "フェーズ: 結果表示"}
               </div>
             </div>

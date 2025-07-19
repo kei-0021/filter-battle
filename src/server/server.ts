@@ -1,7 +1,8 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
-import { topics, type TopicWithFilters } from "./data/topic";
+import { topics, type TopicWithFilters } from "../../data/topic";
+import { CardsMap, Phase, Player } from "../shared/types";
 
 const app = express();
 const server = http.createServer(app);
@@ -12,21 +13,18 @@ const io = new Server(server, {
   },
 });
 
-type Player = { id: string; name: string };
-
 let players: Player[] = [];
 let hostId: string | null = null;
 const readyPlayers = new Set<string>();
 let currentTopic: TopicWithFilters | null = null;
 let currentFilter: string | null = null;
-const cards: { [playerId: string]: string } = {};
-let hiddenCards: { [playerId: string]: string } = {};
+const cards: CardsMap = {};
+let hiddenCards: CardsMap = {};
 const submittedPlayers = new Set<string>();
 let submitTimer: NodeJS.Timeout | null = null;
 const SUBMIT_TIMEOUT_MS = 30_000;
 
 // フェーズ管理
-type Phase = "submit" | "reveal" | "voting" | "results";
 let phase: Phase = "submit";
 
 function pickRandomTopic() {
