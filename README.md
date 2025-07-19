@@ -9,7 +9,7 @@ npm run build
 ビルド済みの静的ファイルをExpressで配信します：
 ※ npm start は node dist/server.js を呼び出す想定です。
 ```
-npm start
+npm run start
 ```
 
 ## 開発用サーバー起動
