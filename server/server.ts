@@ -25,6 +25,10 @@ const submittedPlayers = new Set<string>();
 let submitTimer: NodeJS.Timeout | null = null;
 const SUBMIT_TIMEOUT_MS = 30_000;
 
+// フェーズ管理
+type Phase = "submit" | "reveal" | "voting" | "results";
+let phase: Phase = "submit";
+
 function pickRandomTopic() {
   return topics[Math.floor(Math.random() * topics.length)];
 }
@@ -36,25 +40,30 @@ function pickRandomFilter(topic: TopicWithFilters | null) {
 }
 
 function startSubmitPhase() {
+  phase = "submit";
+  console.log(`[Phase] submitフェーズ開始`);
   hiddenCards = {};
   submittedPlayers.clear();
   if (submitTimer) {
     clearTimeout(submitTimer);
   }
-  console.log("[startSubmitPhase] 既存タイマークリア");
   submitTimer = setTimeout(() => {
-    console.log("[startSubmitPhase] タイマー終了、カード公開");
+    console.log(`[Phase] submitフェーズタイマー終了、カード公開へ移行`);
     revealCards();
   }, SUBMIT_TIMEOUT_MS);
+  io.emit("phase_update", phase);
 }
 
 function revealCards() {
+  phase = "reveal";
+  console.log(`[Phase] revealフェーズ開始`);
   Object.assign(cards, hiddenCards);
-  const revealed = { ...cards };  // 👈 新しいオブジェクトを作る
+  const revealed = { ...cards };
   hiddenCards = {};
-  io.emit("cards_update", revealed);  // 👈 こっちを送る
+  io.emit("cards_update", revealed);
   io.emit("submitted_update", Array.from(submittedPlayers));
-  io.emit("reveal_cards", revealed);  // 👈 こっちも
+  io.emit("reveal_cards", revealed);
+  io.emit("phase_update", phase);
   console.log("[revealCards] カード公開:", revealed);
 }
 
@@ -76,6 +85,7 @@ io.on("connection", (socket) => {
     io.emit("filter_update", currentFilter);
     io.emit("cards_update", cards);
     io.emit("submitted_update", Array.from(submittedPlayers));
+    io.emit("phase_update", phase);
   });
 
   socket.on("ready_for_restart", () => {
@@ -94,18 +104,23 @@ io.on("connection", (socket) => {
       for (const pid in cards) delete cards[pid];
       hiddenCards = {};
       submittedPlayers.clear();
+      phase = "submit";
       io.emit("players_update", { players, hostId });
       io.emit("topic_update", currentTopic);
       io.emit("filter_update", currentFilter);
       io.emit("cards_update", cards);
       io.emit("submitted_update", Array.from(submittedPlayers));
       io.emit("game_restarted");
-
+      io.emit("phase_update", phase);
       startSubmitPhase();
     }
   });
 
   socket.on("submit_card", (card: string) => {
+    if (phase !== "submit") {
+      console.log("[submit_card] submitフェーズ以外のカード提出は無視");
+      return;
+    }
     hiddenCards[socket.id] = card;
     submittedPlayers.add(socket.id);
     const submittedCount = submittedPlayers.size;
@@ -118,6 +133,16 @@ io.on("connection", (socket) => {
     } else {
       io.emit("submitted_update", Array.from(submittedPlayers));
     }
+  });
+
+  socket.on("start_voting", () => {
+    if (phase !== "reveal") {
+      console.log("[start_voting] 投票開始はrevealフェーズのみ有効");
+      return;
+    }
+    phase = "voting";
+    console.log("[Phase] votingフェーズ開始");
+    io.emit("voting_started");
   });
 
   socket.on("disconnect", () => {
@@ -134,6 +159,7 @@ io.on("connection", (socket) => {
       currentFilter = null;
       hiddenCards = {};
       submittedPlayers.clear();
+      phase = "submit";
       if (submitTimer) clearTimeout(submitTimer);
     }
     io.emit("players_update", { players, hostId });
@@ -142,6 +168,7 @@ io.on("connection", (socket) => {
     io.emit("filter_update", currentFilter);
     io.emit("cards_update", cards);
     io.emit("submitted_update", Array.from(submittedPlayers));
+    io.emit("phase_update", phase);
   });
 });
 

@@ -41,6 +41,8 @@ function App() {
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const [phase, setPhase] = useState<"submit" | "reveal" | "voting" | "results">("submit");
+
   useEffect(() => {
     socket.on(
       "players_update",
@@ -102,6 +104,11 @@ function App() {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      setPhase("reveal");
+    });
+
+    socket.on("voting_started", () => {
+      setPhase("voting");
     });
 
     socket.on("game_restarted", () => {
@@ -161,72 +168,118 @@ function App() {
   };
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "sans-serif", position: "relative" }}>
+    <div
+      style={{
+        padding: "2rem",
+        fontFamily: "sans-serif",
+        position: "relative",
+        minHeight: "80vh",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {!joined ? (
         <Title onJoin={handleJoin} />
       ) : (
         <>
-          {/* 右上にTimer固定配置 */}
-          <div
-            style={{
-              position: "absolute",
-              top: "1rem",
-              right: "1rem",
-              zIndex: 10,
-              backgroundColor: "#fff",
-              padding: "0.5rem 1rem",
-              borderRadius: "8px",
-              boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-            }}
-          >
-            <Timer timeLeft={timeLeft} />
+          {/* メインコンテンツ */}
+          <div style={{ flexGrow: 1 }}>
+            {/* 右上にTimer固定配置 */}
+            <div
+              style={{
+                position: "absolute",
+                top: "1rem",
+                right: "1rem",
+                zIndex: 10,
+                backgroundColor: "#fff",
+                padding: "0.5rem 1rem",
+                borderRadius: "8px",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+              }}
+            >
+              <Timer timeLeft={timeLeft} />
+              <div
+                style={{ marginTop: "0.5rem", fontWeight: "bold", textAlign: "center" }}
+              >
+                {phase === "submit" && "フェーズ: カード提出"}
+                {phase === "reveal" && "フェーズ: カード公開"}
+                {phase === "voting" && "フェーズ: 投票"}
+                {phase === "results" && "フェーズ: 結果表示"}
+              </div>
+            </div>
+
+            <h2>お題: {currentTopic ? currentTopic.title : "まだお題がありません"}</h2>
+
+            {isHost ? (
+              <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>
+                あなたがフィルタラーです
+                <br />
+                <span style={{ fontWeight: "normal", fontSize: "16px", color: "#555" }}>
+                  フィルター: <strong>{currentFilter || "なし"}</strong> をテーマに書いてください
+                </span>
+              </p>
+            ) : (
+              <h3>フィルタラーを当てましょう!</h3>
+            )}
+
+            <h2>カードの提出状況</h2>
+            {players.map((p) => (
+              <PlayerCard
+                key={p.id}
+                name={p.name}
+                card={cards[p.id] || ""}
+                editable={p.id === socketId && !submitted && submissionAllowed}
+                isMe={p.id === socketId}
+                draftCard={p.id === socketId ? draftCard : undefined}
+                setDraftCard={
+                  p.id === socketId && !submitted && submissionAllowed ? setDraftCard : undefined
+                }
+                onSubmitCard={
+                  p.id === socketId && !submitted && submissionAllowed ? handleSubmitCard : undefined
+                }
+                submissionAllowed={submissionAllowed}
+                hasSubmitted={submittedPlayers.has(p.id)}
+              />
+            ))}
+
+            {phase === "reveal" && (
+              <button
+                onClick={() => socket.emit("start_voting")}
+                style={{
+                  marginTop: "1rem",
+                  padding: "0.6rem 1.2rem",
+                  fontSize: "1rem",
+                  backgroundColor: "#1976d2",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: "pointer",
+                }}
+              >
+                投票に移る
+              </button>
+            )}
           </div>
 
-          <h2>お題: {currentTopic ? currentTopic.title : "まだお題がありません"}</h2>
+          {/* フッター部分 */}
+          <div
+            style={{
+              paddingTop: "2rem",
+              borderTop: "1px solid #ccc",
+              marginBottom: "2rem",
+            }}
+          >
+            <button onClick={handleRestart} style={{ padding: "0.5rem 1rem" }}>
+              もう一度遊ぶ (全員準備完了で再スタート)
+            </button>
 
-          {isHost ? (
-            <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>
-              あなたがフィルタラーです
-              <br />
-              <span style={{ fontWeight: "normal", fontSize: "16px", color: "#555" }}>
-                フィルター: <strong>{currentFilter || "なし"}</strong> をテーマに書いてください
-              </span>
+            <p style={{ marginTop: "0.5rem" }}>
+              {readyCount} / {totalCount}人が準備済みです
             </p>
-          ) : (
-            <h3>フィルタラーを当てましょう!</h3>
-          )}
-
-          <h2>カードの提出状況</h2>
-          {players.map((p) => (
-            <PlayerCard
-              key={p.id}
-              name={p.name}
-              card={cards[p.id] || ""}
-              editable={p.id === socketId && !submitted && submissionAllowed}
-              isMe={p.id === socketId}
-              draftCard={p.id === socketId ? draftCard : undefined}
-              setDraftCard={
-                p.id === socketId && !submitted && submissionAllowed ? setDraftCard : undefined
-              }
-              onSubmitCard={
-                p.id === socketId && !submitted && submissionAllowed ? handleSubmitCard : undefined
-              }
-              submissionAllowed={submissionAllowed}
-              hasSubmitted={submittedPlayers.has(p.id)}
-            />
-          ))}
-
-          <button onClick={handleRestart} style={{ padding: "0.5rem 1rem", marginTop: "1rem" }}>
-            もう一度遊ぶ (全員準備完了で再スタート)
-          </button>
-
-          <p>
-            {readyCount} / {totalCount}人が準備済みです
-          </p>
+          </div>
         </>
       )}
     </div>
   );
 }
-
 export default App;
