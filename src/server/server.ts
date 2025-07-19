@@ -3,9 +3,9 @@ import http from "http";
 import path from "path";
 import { Server } from "socket.io";
 import { fileURLToPath } from "url"; // ESModules で __dirname を使うため
-import { topics } from "../../data/topic";
-import { GameState, Player, TopicWithFilters } from "../shared/types";
-import { calculateScores } from "./calculateScores";
+import { topics } from "../data/topic.js";
+import { GameState, Player, TopicWithFilters } from "../shared/types.js";
+import { calculateScores } from "./calculateScores.js";
 
 // __dirname を取得（ESModules対策）
 const __filename = fileURLToPath(import.meta.url);
@@ -275,8 +275,4 @@ io.on("connection", (socket) => {
     io.emit("submitted_update", Array.from(gameState.submittedPlayers));
     io.emit("phase_update", gameState.phase);
   });
-});
-
-server.listen(3001, () => {
-  console.log("✅ Server listening on port 3001");
 });

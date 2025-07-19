@@ -1,12 +1,13 @@
 {
   "name": "my-filter-app",
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc && vite build",
+    "build": "tsc --outDir dist-server && vite build",
     "preview": "vite preview",
     "server": "ts-node src/server/server.ts",
-    "start": "node dist/server.js",
+    "start": "node dist-server/server/server.js",
     "start:dev": "concurrently \"npm run server\" \"npm run dev\""
   },
   "dependencies": {

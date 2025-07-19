@@ -1,4 +1,4 @@
-import { TopicWithFilters } from "../src/shared/types";
+import { TopicWithFilters } from "../shared/types";
 
 export const topics: TopicWithFilters[] = [
   { id: 1, title: "家あるある", filters: ["掃除好き", "節約重視", "ペット中心"] },
