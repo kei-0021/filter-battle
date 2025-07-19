@@ -87,6 +87,7 @@ io.on("connection", (socket) => {
 
     if (gameState.players.length === 1) {
       gameState.filtererId = socket.id;
+      console.log(`[join] 最初の参加者、フィルタラーに設定: ${gameState.filtererId}`);
       gameState.currentTopic = pickRandomTopic();
       gameState.currentFilter = pickRandomFilter(gameState.currentTopic);
       startSubmitPhase();
@@ -110,6 +111,7 @@ io.on("connection", (socket) => {
     if (readyCount === totalCount) {
       // ランダムにフィルタラーを選ぶ
       gameState.filtererId = pickRandomPlayer();
+      console.log(`[ready_for_restart] 全員準備完了、フィルタラー: ${gameState.filtererId}`);
 
       // 新しいトピックとフィルターを選ぶ
       gameState.currentTopic = pickRandomTopic();

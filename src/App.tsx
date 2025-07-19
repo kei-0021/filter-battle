@@ -28,7 +28,6 @@ function App() {
   const [votedPlayerId, setVotedPlayerId] = useState<string | null>(null);
   const [phase, setPhase] = useState<GamePhase>("submit");
 
-  // 投票結果を保持
   type VotingResults = {
     scores: Record<string, number>;
     voteCounts: Record<string, number>;
@@ -40,8 +39,8 @@ function App() {
 
   useEffect(() => {
     socket.on("players_update", ({ players, filtererId }: { players: Player[]; filtererId: string | null }) => {
-      console.log("players_update受信:", filtererId);
       setPlayers(players);
+      setFiltererId(filtererId);
     });
 
     socket.on("ready_status", ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
@@ -101,6 +100,7 @@ function App() {
     socket.on("voting_started", () => {
       setPhase("voting");
       setVotingResults(null);
+      setVotedPlayerId(null);
     });
 
     socket.on("voting_results", ({ scores, voteCounts, scoreDiffs }: {
@@ -159,11 +159,14 @@ function App() {
 
   const handleVote = (playerId: string) => {
     if (phase !== "voting") return;
-    setVotedPlayerId(playerId);  // ここで投票した相手のIDを状態にセット
+    console.log("投票：", playerId);
     socket.emit("vote", playerId);
+    setVotedPlayerId(playerId);
+    console.log("setVotedPlayerId実行後:", playerId);
   };
 
   const handleRestart = () => {
+    setPhase("submit");  // ここでフェーズを先に戻す
     socket.emit("ready_for_restart");
   };
 
@@ -231,42 +234,48 @@ function App() {
             )}
 
             <h2>カードの提出状況</h2>
-            {players?.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => {
-                  if (phase === "voting" && p.id !== socketId) {
-                    handleVote(p.id);
-                  }
-                }}
-                style={{
-                  cursor: phase === "voting" && p.id !== socketId ? "pointer" : "default",
-                }}
-              >
-                <PlayerCard
-                  name={p.name}
-                  card={cards[p.id] || ""}
-                  editable={p.id === socketId && !submitted && submissionAllowed}
-                  isMe={p.id === socketId}
-                  draftCard={p.id === socketId ? draftCard : undefined}
-                  setDraftCard={
-                    p.id === socketId && !submitted && submissionAllowed ? setDraftCard : undefined
-                  }
-                  onSubmitCard={
-                    p.id === socketId && !submitted && submissionAllowed ? handleSubmitCard : undefined
-                  }
-                  submissionAllowed={submissionAllowed}
-                  hasSubmitted={submittedPlayers.has(p.id)}
-                  onVote={
-                    phase === "voting" && p.id !== socketId
-                      ? () => handleVote(p.id)
-                      : undefined
-                  }
-                  voted={p.id === votedPlayerId}
-                  isFilterer={phase === "results" && p.id === filtererId}
-                />
-              </div>
-            ))}
+            {players?.map((p) => {
+              const votedByMeFlag = (phase === "voting" || phase === "results") && votedPlayerId === p.id;
+              return (
+                <div key={p.id} style={{ marginBottom: "1rem" }}>
+                  <div
+                    onClick={() => {
+                      if (phase === "voting" && p.id !== socketId) {
+                        handleVote(p.id);
+                      }
+                    }}
+                    style={{
+                      cursor: phase === "voting" && p.id !== socketId ? "pointer" : "default",
+                    }}
+                  >
+                    <PlayerCard
+                      name={p.name}
+                      card={cards[p.id] || ""}
+                      editable={p.id === socketId && !submitted && submissionAllowed}
+                      isMe={p.id === socketId}
+                      draftCard={p.id === socketId ? draftCard : undefined}
+                      setDraftCard={
+                        p.id === socketId && !submitted && submissionAllowed ? setDraftCard : undefined
+                      }
+                      onSubmitCard={
+                        p.id === socketId && !submitted && submissionAllowed ? handleSubmitCard : undefined
+                      }
+                      submissionAllowed={submissionAllowed}
+                      hasSubmitted={submittedPlayers.has(p.id)}
+                      onVote={
+                        phase === "voting" && p.id !== socketId
+                          ? () => handleVote(p.id)
+                          : undefined
+                      }
+                      voted={p.id === votedPlayerId}
+                      votedByMe={votedByMeFlag}
+                      votedByOthers={phase==="results" && votingResults ? (votingResults.voteCounts[p.id] ?? 0) - (votedPlayerId === p.id ? 1 : 0) : 0}
+                      isFilterer={phase === "results" && p.id === filtererId}
+                    />
+                  </div>
+                </div>
+              );
+            })}
 
             {phase === "reveal" && (
               <button

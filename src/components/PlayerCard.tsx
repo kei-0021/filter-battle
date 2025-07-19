@@ -11,7 +11,9 @@ type PlayerCardProps = {
   submissionAllowed: boolean;
   hasSubmitted: boolean;
   onVote?: () => void; // 投票クリック用
-  voted?: boolean; // 追加: 自分がこのカードに投票済みかどうか
+  voted?: boolean;
+  votedByMe?: boolean;
+  votedByOthers: number;
   isFilterer?: boolean; // 追加
 };
 
@@ -27,10 +29,13 @@ export const PlayerCard = ({
   hasSubmitted,
   onVote,
   voted = false,
+  votedByMe = false,
+  votedByOthers = 0,
   isFilterer = false, // 追加: フィルタラーかどうか
 }: PlayerCardProps) => {
   const baseStyle: React.CSSProperties = {
     position: "relative",
+    zIndex: 0, // 👈 これを追加する
     borderRadius: "12px",
     padding: "1rem",
     marginBottom: "1rem",
@@ -75,7 +80,7 @@ export const PlayerCard = ({
       {isMe && <span>（あなた）</span>}
 
       {/* 投票済みチェックマーク */}
-      {voted && (
+      {voted && votedByMe && (
         <div
           style={{
             position: "absolute",
@@ -99,16 +104,54 @@ export const PlayerCard = ({
           ✓
         </div>
       )}
+      {votedByOthers > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: "8px",
+            right: voted && votedByMe ? "40px" : "8px",
+            display: "flex",
+            gap: "4px", // バッジ同士の間隔
+          }}
+          aria-label={`他の参加者からの投票数: ${votedByOthers}`}
+          title={`他の参加者からの投票数: ${votedByOthers}`}
+        >
+          {Array.from({ length: votedByOthers }).map((_, i) => (
+            <div
+              key={i}
+              style={{
+                width: "24px",
+                height: "24px",
+                backgroundColor: "#4b4b4bff",
+                borderRadius: "50%",
+                color: "white",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                fontWeight: "bold",
+                fontSize: "14px",
+                userSelect: "none",
+                lineHeight: 1,
+                zIndex: 3, // 👈これを追加
+              }}
+              aria-hidden="true"
+            >
+              ✓
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* フィルタラー表示 */}
       {isFilterer && (
         <div
           style={{
             position: "absolute",
-            bottom: "8px", // ✓の下にずらす
+            bottom: "8px",
             right: "8px",
             width: "24px",
             height: "24px",
-            backgroundColor: "#f44336", // 赤系のアクセント
+            backgroundColor: "#f44336",
             borderRadius: "50%",
             color: "white",
             display: "flex",
@@ -118,6 +161,7 @@ export const PlayerCard = ({
             fontSize: "16px",
             userSelect: "none",
             fontFamily: "sans-serif",
+            zIndex: 2, // 👈これを追加
           }}
           aria-label="フィルタラー"
           title="フィルタラーです"
@@ -125,6 +169,7 @@ export const PlayerCard = ({
           🔍
         </div>
       )}
+
 
 
       <div style={{ marginTop: "0.5rem" }}>
