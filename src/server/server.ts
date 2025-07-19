@@ -19,7 +19,8 @@ const server = http.createServer(app);
 
 // CORS 許可ドメイン
 const allowedOrigins = [
-   process.env.REACT_APP_SOCKET_URL || "http://localhost:5173",
+   "https://filter-buttle.onrender.com",
+   "http://localhost:5173",
 ];
 
 const io = new Server(server, {
