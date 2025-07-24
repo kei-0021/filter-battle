@@ -1,4 +1,4 @@
-# Filter-buttle
+# Filter-battle
 ## 本番ビルドと起動
 1. ビルド
 まずクライアントをビルドします：

@@ -1,5 +1,5 @@
 {
-  "name": "Filter Buttle",
+  "name": "Filter battle",
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."

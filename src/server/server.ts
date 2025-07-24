@@ -19,7 +19,7 @@ const server = http.createServer(app);
 
 // CORS 許可ドメイン
 const allowedOrigins = [
-   "https://filter-buttle.onrender.com",
+   "https://filter-battle.onrender.com",
    "http://localhost:5173",
 ];
 
