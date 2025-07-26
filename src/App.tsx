@@ -7,7 +7,7 @@ import { CardsMap, GamePhase, Player, TopicWithFilters } from "./shared/types";
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3001";
 const socket = io(SOCKET_URL);
-const TIMER = 30;
+const TIMER = 40;
 
 function App() {
   const [name, setName] = useState("");
