@@ -1,17 +1,58 @@
+import cors from "cors";
 import express from "express";
 import http from "http";
+import path from "path";
 import { Server } from "socket.io";
-import { topics } from "../../data/topic";
-import { GameState, Player, TopicWithFilters } from "../shared/types";
-import { calculateScores } from "./calculateScores";
+import { fileURLToPath } from "url"; // ESModules で __dirname を使うため
+import { USE_INDEPENDENT_TOPIC_AND_FILTERS } from "../constants.js";
+import filters from "../data/filters.json" with { type: "json" };
+import topics from "../data/topics.json" with { type: "json" };
+import { GameState, Player, TopicWithFilters } from "../types/types.js";
+import { calculateScores } from "./calculateScores.js";
+
+// __dirname を取得（ESModules対策）
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// dist パス（Viteでビルドした静的ファイル）
+const distPath = path.join(__dirname, "../../dist");
 
 const app = express();
 const server = http.createServer(app);
+
+// CORS 許可ドメイン
+const allowedOrigins = [
+  "https://filter-battle.onrender.com",
+  "http://localhost:5173",
+];
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
+
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
     credentials: true,
   },
+});
+
+// 静的ファイル提供（例: dist/index.html, dist/assets/...）
+app.use(express.static(distPath));
+
+// SPAルーティングのため catch-all
+app.get("*", (_, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
+});
+
+// サーバー起動
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
 
 const SUBMIT_TIMEOUT_MS = 30_000;
@@ -43,10 +84,16 @@ function pickRandomTopic(): TopicWithFilters | null {
   return topics[idx];
 }
 
-function pickRandomFilter(topic: TopicWithFilters | null): string | null {
+function pickRandomFilterByTopic(topic: TopicWithFilters | null): string | null {
   if (!topic || !topic.filters.length) return null;
   const idx = Math.floor(Math.random() * topic.filters.length);
   return topic.filters[idx];
+}
+
+function pickRandomFilterWord(): string | null {
+  if (!filters.length) return null;
+  const idx = Math.floor(Math.random() * filters.length);
+  return filters[idx].filter;  // filters.json の構造に合わせる
 }
 
 function startSubmitPhase() {
@@ -88,8 +135,15 @@ io.on("connection", (socket) => {
     if (gameState.players.length === 1) {
       gameState.filtererId = socket.id;
       console.log(`[join] 最初の参加者、フィルタラーに設定: ${gameState.filtererId}`);
-      gameState.currentTopic = pickRandomTopic();
-      gameState.currentFilter = pickRandomFilter(gameState.currentTopic);
+
+      if (USE_INDEPENDENT_TOPIC_AND_FILTERS) {
+        gameState.currentTopic = pickRandomTopic();
+        gameState.currentFilter = pickRandomFilterWord();
+      } else {
+        gameState.currentTopic = pickRandomTopic();
+        gameState.currentFilter = pickRandomFilterByTopic(gameState.currentTopic);
+      }
+
       startSubmitPhase();
       console.log("[join] 最初の参加者、submitフェーズ開始");
     }
@@ -109,15 +163,17 @@ io.on("connection", (socket) => {
     io.emit("ready_status", { readyCount, totalCount });
 
     if (readyCount === totalCount) {
-      // ランダムにフィルタラーを選ぶ
       gameState.filtererId = pickRandomPlayer();
       console.log(`[ready_for_restart] 全員準備完了、フィルタラー: ${gameState.filtererId}`);
 
-      // 新しいトピックとフィルターを選ぶ
-      gameState.currentTopic = pickRandomTopic();
-      gameState.currentFilter = pickRandomFilter(gameState.currentTopic);
+      if (USE_INDEPENDENT_TOPIC_AND_FILTERS) {
+        gameState.currentTopic = pickRandomTopic();
+        gameState.currentFilter = pickRandomFilterWord();
+      } else {
+        gameState.currentTopic = pickRandomTopic();
+        gameState.currentFilter = pickRandomFilterByTopic(gameState.currentTopic);
+      }
 
-      // スコアや提出状況などリセット
       gameState.readyPlayers.clear();
       gameState.cards = {};
       gameState.hiddenCards = {};
@@ -135,7 +191,6 @@ io.on("connection", (socket) => {
       startSubmitPhase();
     }
   });
-
 
   socket.on("submit_card", (card: string) => {
     if (gameState.phase !== "submit") {
@@ -242,8 +297,4 @@ io.on("connection", (socket) => {
     io.emit("submitted_update", Array.from(gameState.submittedPlayers));
     io.emit("phase_update", gameState.phase);
   });
-});
-
-server.listen(3001, () => {
-  console.log("✅ Server listening on port 3001");
 });

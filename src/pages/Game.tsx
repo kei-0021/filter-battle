@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
-import { PlayerCard } from "./components/PlayerCard";
-import { Timer } from "./components/Timer";
-import { Title } from "./pages/Title";
-import { CardsMap, GamePhase, Player, TopicWithFilters } from "./shared/types";
+import { PlayerCard, Timer } from "../components";
+import { COMPOSING_TIME_LIMIT } from "../constants.js";
+import { CardsMap, GamePhase, Player, TopicWithFilters } from "../types/types";
+import { Title } from "./Title";
 
-const socket = io("http://localhost:3001");
-const TIMER = 30;
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
+const socket = io(SOCKET_URL, {
+  withCredentials: true,
+});
 
-function App() {
+function Game() {
   const [name, setName] = useState("");
   const [joined, setJoined] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -23,7 +25,7 @@ function App() {
   const [draftCard, setDraftCard] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submissionAllowed, setSubmissionAllowed] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(TIMER);
+  const [timeLeft, setTimeLeft] = useState(COMPOSING_TIME_LIMIT);
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
   const [votedPlayerId, setVotedPlayerId] = useState<string | null>(null);
   const [phase, setPhase] = useState<GamePhase>("submit");
@@ -53,25 +55,35 @@ function App() {
       setDraftCard("");
       setSubmitted(false);
       setSubmissionAllowed(true);
-      setTimeLeft(TIMER);
+      setTimeLeft(COMPOSING_TIME_LIMIT);
       setSubmittedPlayers(new Set());
       setVotingResults(null);
-      if (timerRef.current) clearInterval(timerRef.current);
+
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+
+      let time = COMPOSING_TIME_LIMIT;
       timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            setSubmissionAllowed(false);
-            setSubmitted(true);
-            if (timerRef.current) {
-              clearInterval(timerRef.current);
-              timerRef.current = null;
-            }
-            return 0;
+        time -= 1;
+        setTimeLeft(time);
+        if (time <= 0) {
+          setSubmissionAllowed(false);
+          setSubmitted(true);
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
           }
-          return prev - 1;
-        });
+
+          // 👇 追加: 未提出かつ入力がある場合、強制送信
+          if (!submitted && draftCard.trim()) {
+            socket.emit("submit_card", draftCard.trim());
+          }
+        }
       }, 1000);
     });
+
 
     socket.on("filter_update", (filter: string | null) => {
       setCurrentFilter(filter);
@@ -116,7 +128,7 @@ function App() {
       setSubmitted(false);
       setDraftCard("");
       setSubmissionAllowed(true);
-      setTimeLeft(TIMER);
+      setTimeLeft(COMPOSING_TIME_LIMIT);
       setSubmittedPlayers(new Set());
       setVotingResults(null);
       if (timerRef.current) clearInterval(timerRef.current);
@@ -331,4 +343,4 @@ function App() {
   );
 }
 
-export default App;
+export default Game;
