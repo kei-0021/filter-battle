@@ -1,4 +1,4 @@
-import { type GameState } from "../types/types";
+import { type GameState } from "../types/gameTypes";
 
 export function calculateScores(gameState: GameState) {
   const { votes, filtererId, players } = gameState;

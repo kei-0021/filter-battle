@@ -1,8 +1,10 @@
+// src/pages/Game.tsx
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
-import { PlayerCard, Timer } from "../components";
+import { PlayerCard, Timer } from "../components/index.js";
 import { COMPOSING_TIME_LIMIT } from "../constants.js";
-import { CardsMap, GamePhase, Player, TopicWithFilters } from "../types/types";
+import { CardsMap, GamePhase, Player, TopicWithFilters } from "../types/gameTypes.js";
+import { RoomSelect } from "./RoomSelect"; // ルーム選択用コンポーネントを別途作成
 import { Title } from "./Title";
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
@@ -12,6 +14,7 @@ const socket = io(SOCKET_URL, {
 
 function Game() {
   const [name, setName] = useState("");
+  const [roomId, setRoomId] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [filtererId, setFiltererId] = useState<string | null>(null);
@@ -75,15 +78,12 @@ function Game() {
             clearInterval(timerRef.current);
             timerRef.current = null;
           }
-
-          // 👇 追加: 未提出かつ入力がある場合、強制送信
           if (!submitted && draftCard.trim()) {
-            socket.emit("submit_card", draftCard.trim());
+            socket.emit("submit_card", { card: draftCard.trim(), roomId });
           }
         }
       }, 1000);
     });
-
 
     socket.on("filter_update", (filter: string | null) => {
       setCurrentFilter(filter);
@@ -115,12 +115,8 @@ function Game() {
       setVotedPlayerId(null);
     });
 
-    socket.on("voting_results", ({ scores, voteCounts, scoreDiffs }: {
-      scores: Record<string, number>;
-      voteCounts: Record<string, number>;
-      scoreDiffs: Record<string, number>;
-    }) => {
-      setVotingResults({ scores, voteCounts , scoreDiffs });
+    socket.on("voting_results", ({ scores, voteCounts, scoreDiffs }: VotingResults) => {
+      setVotingResults({ scores, voteCounts, scoreDiffs });
       setPhase("results");
     });
 
@@ -161,36 +157,42 @@ function Game() {
       socket.off("voting_results");
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, []);
+  }, [roomId, submitted, draftCard]);
 
   const handleJoin = (joinName: string) => {
     setName(joinName);
-    socket.emit("join", joinName);
+  };
+
+  const handleEnterRoom = (room: string) => {
+    setRoomId(room);
+    socket.emit("join_room", { name, roomId: room });
     setJoined(true);
   };
 
   const handleVote = (playerId: string) => {
-    if (phase !== "voting") return;
-    console.log("投票：", playerId);
-    socket.emit("vote", playerId);
+    if (phase !== "voting" || !roomId) return;
+    socket.emit("vote", { playerId, roomId });
     setVotedPlayerId(playerId);
-    console.log("setVotedPlayerId実行後:", playerId);
   };
 
   const handleRestart = () => {
-    setPhase("submit");  // ここでフェーズを先に戻す
-    socket.emit("ready_for_restart");
+    if (!roomId) return;
+    setPhase("submit");
+    socket.emit("ready_for_restart", { roomId });
   };
 
   const handleSubmitCard = () => {
-    if (!draftCard.trim() || !submissionAllowed) return;
-    socket.emit("submit_card", draftCard.trim());
+    if (!draftCard.trim() || !submissionAllowed || !roomId) return;
+    socket.emit("submit_card", { card: draftCard.trim(), roomId });
     setSubmitted(true);
     setSubmissionAllowed(false);
   };
 
   const socketId = socket.id;
   const isFilterer = socketId === filtererId;
+
+  if (!name) return <Title onJoin={handleJoin} />;
+  if (!roomId) return <RoomSelect name={name} onEnterRoom={handleEnterRoom} />;
 
   return (
     <div
@@ -203,8 +205,10 @@ function Game() {
         flexDirection: "column",
       }}
     >
-      {!joined ? (
+      {!name ? (
         <Title onJoin={handleJoin} />
+      ) : !joined ? (
+        <RoomSelect name={name} onEnterRoom={handleEnterRoom} />
       ) : (
         <>
           <div style={{ flexGrow: 1 }}>
@@ -247,7 +251,8 @@ function Game() {
 
             <h2>カードの提出状況</h2>
             {players?.map((p) => {
-              const votedByMeFlag = (phase === "voting" || phase === "results") && votedPlayerId === p.id;
+              const votedByMeFlag =
+                (phase === "voting" || phase === "results") && votedPlayerId === p.id;
               return (
                 <div key={p.id} style={{ marginBottom: "1rem" }}>
                   <div
@@ -267,10 +272,14 @@ function Game() {
                       isMe={p.id === socketId}
                       draftCard={p.id === socketId ? draftCard : undefined}
                       setDraftCard={
-                        p.id === socketId && !submitted && submissionAllowed ? setDraftCard : undefined
+                        p.id === socketId && !submitted && submissionAllowed
+                          ? setDraftCard
+                          : undefined
                       }
                       onSubmitCard={
-                        p.id === socketId && !submitted && submissionAllowed ? handleSubmitCard : undefined
+                        p.id === socketId && !submitted && submissionAllowed
+                          ? handleSubmitCard
+                          : undefined
                       }
                       submissionAllowed={submissionAllowed}
                       hasSubmitted={submittedPlayers.has(p.id)}
@@ -281,7 +290,12 @@ function Game() {
                       }
                       voted={p.id === votedPlayerId}
                       votedByMe={votedByMeFlag}
-                      votedByOthers={phase==="results" && votingResults ? (votingResults.voteCounts[p.id] ?? 0) - (votedPlayerId === p.id ? 1 : 0) : 0}
+                      votedByOthers={
+                        phase === "results" && votingResults
+                          ? (votingResults.voteCounts[p.id] ?? 0) -
+                            (votedPlayerId === p.id ? 1 : 0)
+                          : 0
+                      }
                       isFilterer={phase === "results" && p.id === filtererId}
                     />
                   </div>
@@ -291,7 +305,7 @@ function Game() {
 
             {phase === "reveal" && (
               <button
-                onClick={() => socket.emit("start_voting")}
+                onClick={() => socket.emit("start_voting", { roomId })}
                 style={{
                   marginTop: "1rem",
                   padding: "0.6rem 1.2rem",
@@ -313,8 +327,11 @@ function Game() {
                 <ul>
                   {players.map((p) => (
                     <li key={p.id}>
-                      {p.name}: {votingResults.voteCounts[p.id] ?? 0}票 / スコア: {votingResults.scores[p.id] ?? 0}（
-                        {votingResults.scoreDiffs[p.id] > 0 ? `+${votingResults.scoreDiffs[p.id]}` : votingResults.scoreDiffs[p.id] ?? 0}
+                      {p.name}: {votingResults.voteCounts[p.id] ?? 0}票 / スコア:{" "}
+                      {votingResults.scores[p.id] ?? 0}（
+                      {votingResults.scoreDiffs[p.id] > 0
+                        ? `+${votingResults.scoreDiffs[p.id]}`
+                        : votingResults.scoreDiffs[p.id] ?? 0}
                       ）
                     </li>
                   ))}
@@ -341,6 +358,7 @@ function Game() {
       )}
     </div>
   );
+
 }
 
 export default Game;
