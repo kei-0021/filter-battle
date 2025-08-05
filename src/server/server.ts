@@ -4,7 +4,7 @@ import http from "http";
 import path from "path";
 import { Server } from "socket.io";
 import { fileURLToPath } from "url"; // ESModules で __dirname を使うため
-import { topics } from "../data/topic.js";
+import topics from "../data/topics.json" with { type: "json" };
 import { GameState, Player, TopicWithFilters } from "../types/types.js";
 import { calculateScores } from "./calculateScores.js";
 

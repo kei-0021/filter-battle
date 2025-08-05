@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
-import { PlayerCard } from "../components/PlayerCard";
-import { Timer } from "../components/Timer";
+import { PlayerCard, Timer } from "../components";
 import { COMPOSING_TIME_LIMIT } from "../constants";
 import { CardsMap, GamePhase, Player, TopicWithFilters } from "../types/types";
 import { Title } from "./Title";
