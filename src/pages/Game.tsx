@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { PlayerCard } from "../components/PlayerCard";
 import { Timer } from "../components/Timer";
+import { COMPOSING_TIME_LIMIT } from "../constants";
 import { CardsMap, GamePhase, Player, TopicWithFilters } from "../types/types";
 import { Title } from "./Title";
 
@@ -9,7 +10,6 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
 const socket = io(SOCKET_URL, {
   withCredentials: true,
 });
-const TIMER = 40;
 
 function Game() {
   const [name, setName] = useState("");
@@ -26,7 +26,7 @@ function Game() {
   const [draftCard, setDraftCard] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submissionAllowed, setSubmissionAllowed] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(TIMER);
+  const [timeLeft, setTimeLeft] = useState(COMPOSING_TIME_LIMIT);
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
   const [votedPlayerId, setVotedPlayerId] = useState<string | null>(null);
   const [phase, setPhase] = useState<GamePhase>("submit");
@@ -56,25 +56,30 @@ function Game() {
       setDraftCard("");
       setSubmitted(false);
       setSubmissionAllowed(true);
-      setTimeLeft(TIMER);
+      setTimeLeft(COMPOSING_TIME_LIMIT);
       setSubmittedPlayers(new Set());
       setVotingResults(null);
-      if (timerRef.current) clearInterval(timerRef.current);
+
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+
+      let time = COMPOSING_TIME_LIMIT;
       timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            setSubmissionAllowed(false);
-            setSubmitted(true);
-            if (timerRef.current) {
-              clearInterval(timerRef.current);
-              timerRef.current = null;
-            }
-            return 0;
+        time -= 1;
+        setTimeLeft(time);
+        if (time <= 0) {
+          setSubmissionAllowed(false);
+          setSubmitted(true);
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
           }
-          return prev - 1;
-        });
+        }
       }, 1000);
     });
+
 
     socket.on("filter_update", (filter: string | null) => {
       setCurrentFilter(filter);
@@ -119,7 +124,7 @@ function Game() {
       setSubmitted(false);
       setDraftCard("");
       setSubmissionAllowed(true);
-      setTimeLeft(TIMER);
+      setTimeLeft(COMPOSING_TIME_LIMIT);
       setSubmittedPlayers(new Set());
       setVotingResults(null);
       if (timerRef.current) clearInterval(timerRef.current);
