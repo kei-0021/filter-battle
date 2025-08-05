@@ -1,3 +1,4 @@
+import cors from "cors";
 import express from "express";
 import http from "http";
 import path from "path";
@@ -23,9 +24,17 @@ const allowedOrigins = [
    "http://localhost:5173",
 ];
 
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
+
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
+    methods: ["GET", "POST"],
     credentials: true,
   },
 });
@@ -41,11 +50,10 @@ app.get("*", (_, res) => {
 // Socket.IOのロジック（必要ならここに追加）
 
 // サーバー起動
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`✅ Server listening on port ${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
-
 
 const SUBMIT_TIMEOUT_MS = 30_000;
 
