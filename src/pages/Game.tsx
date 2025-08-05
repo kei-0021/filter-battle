@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
-import { PlayerCard } from "./components/PlayerCard";
-import { Timer } from "./components/Timer";
-import { Title } from "./pages/Title";
-import { CardsMap, GamePhase, Player, TopicWithFilters } from "./shared/types";
+import { PlayerCard } from "../components/PlayerCard";
+import { Timer } from "../components/Timer";
+import { CardsMap, GamePhase, Player, TopicWithFilters } from "../types/types";
+import { Title } from "./Title";
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
 const socket = io(SOCKET_URL, {
@@ -11,7 +11,7 @@ const socket = io(SOCKET_URL, {
 });
 const TIMER = 40;
 
-function App() {
+function Game() {
   const [name, setName] = useState("");
   const [joined, setJoined] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -334,4 +334,4 @@ function App() {
   );
 }
 
-export default App;
+export default Game;

@@ -5,7 +5,7 @@ import path from "path";
 import { Server } from "socket.io";
 import { fileURLToPath } from "url"; // ESModules で __dirname を使うため
 import { topics } from "../data/topic.js";
-import { GameState, Player, TopicWithFilters } from "../shared/types.js";
+import { GameState, Player, TopicWithFilters } from "../types/types.js";
 import { calculateScores } from "./calculateScores.js";
 
 // __dirname を取得（ESModules対策）
