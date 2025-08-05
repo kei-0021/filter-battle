@@ -4,6 +4,8 @@ import http from "http";
 import path from "path";
 import { Server } from "socket.io";
 import { fileURLToPath } from "url"; // ESModules で __dirname を使うため
+import { USE_INDEPENDENT_TOPIC_AND_FILTERS } from "../constants.js";
+import filters from "../data/filters.json" with { type: "json" };
 import topics from "../data/topics.json" with { type: "json" };
 import { GameState, Player, TopicWithFilters } from "../types/types.js";
 import { calculateScores } from "./calculateScores.js";
@@ -20,8 +22,8 @@ const server = http.createServer(app);
 
 // CORS 許可ドメイン
 const allowedOrigins = [
-   "https://filter-battle.onrender.com",
-   "http://localhost:5173",
+  "https://filter-battle.onrender.com",
+  "http://localhost:5173",
 ];
 
 app.use(
@@ -46,8 +48,6 @@ app.use(express.static(distPath));
 app.get("*", (_, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
-
-// Socket.IOのロジック（必要ならここに追加）
 
 // サーバー起動
 const PORT = process.env.PORT || 3000;
@@ -84,10 +84,16 @@ function pickRandomTopic(): TopicWithFilters | null {
   return topics[idx];
 }
 
-function pickRandomFilter(topic: TopicWithFilters | null): string | null {
+function pickRandomFilterByTopic(topic: TopicWithFilters | null): string | null {
   if (!topic || !topic.filters.length) return null;
   const idx = Math.floor(Math.random() * topic.filters.length);
   return topic.filters[idx];
+}
+
+function pickRandomFilterWord(): string | null {
+  if (!filters.length) return null;
+  const idx = Math.floor(Math.random() * filters.length);
+  return filters[idx].filter;  // filters.json の構造に合わせる
 }
 
 function startSubmitPhase() {
@@ -129,8 +135,15 @@ io.on("connection", (socket) => {
     if (gameState.players.length === 1) {
       gameState.filtererId = socket.id;
       console.log(`[join] 最初の参加者、フィルタラーに設定: ${gameState.filtererId}`);
-      gameState.currentTopic = pickRandomTopic();
-      gameState.currentFilter = pickRandomFilter(gameState.currentTopic);
+
+      if (USE_INDEPENDENT_TOPIC_AND_FILTERS) {
+        gameState.currentTopic = pickRandomTopic();
+        gameState.currentFilter = pickRandomFilterWord();
+      } else {
+        gameState.currentTopic = pickRandomTopic();
+        gameState.currentFilter = pickRandomFilterByTopic(gameState.currentTopic);
+      }
+
       startSubmitPhase();
       console.log("[join] 最初の参加者、submitフェーズ開始");
     }
@@ -150,15 +163,17 @@ io.on("connection", (socket) => {
     io.emit("ready_status", { readyCount, totalCount });
 
     if (readyCount === totalCount) {
-      // ランダムにフィルタラーを選ぶ
       gameState.filtererId = pickRandomPlayer();
       console.log(`[ready_for_restart] 全員準備完了、フィルタラー: ${gameState.filtererId}`);
 
-      // 新しいトピックとフィルターを選ぶ
-      gameState.currentTopic = pickRandomTopic();
-      gameState.currentFilter = pickRandomFilter(gameState.currentTopic);
+      if (USE_INDEPENDENT_TOPIC_AND_FILTERS) {
+        gameState.currentTopic = pickRandomTopic();
+        gameState.currentFilter = pickRandomFilterWord();
+      } else {
+        gameState.currentTopic = pickRandomTopic();
+        gameState.currentFilter = pickRandomFilterByTopic(gameState.currentTopic);
+      }
 
-      // スコアや提出状況などリセット
       gameState.readyPlayers.clear();
       gameState.cards = {};
       gameState.hiddenCards = {};
@@ -176,7 +191,6 @@ io.on("connection", (socket) => {
       startSubmitPhase();
     }
   });
-
 
   socket.on("submit_card", (card: string) => {
     if (gameState.phase !== "submit") {
