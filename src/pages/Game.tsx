@@ -75,6 +75,11 @@ function Game() {
             clearInterval(timerRef.current);
             timerRef.current = null;
           }
+
+          // 👇 追加: 未提出かつ入力がある場合、強制送信
+          if (!submitted && draftCard.trim()) {
+            socket.emit("submit_card", draftCard.trim());
+          }
         }
       }, 1000);
     });
