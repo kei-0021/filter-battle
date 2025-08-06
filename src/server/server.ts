@@ -331,6 +331,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log("Disconnected:", socket.id);
+
     for (const [roomId, state] of gameStates.entries()) {
       const prevLength = state.players.length;
       state.players = state.players.filter((p) => p.id !== socket.id);
@@ -362,6 +363,11 @@ io.on("connection", (socket) => {
         io.to(roomId).emit("cards_update", state.cards);
         io.to(roomId).emit("submitted_update", Array.from(state.submittedPlayers));
         io.to(roomId).emit("phase_update", state.phase);
+      }
+
+      if (state.players.length === 0) {
+        gameStates.delete(roomId);
+        console.log(`[Room Cleanup] ルーム「${roomId}」を削除`);
       }
     }
   });
