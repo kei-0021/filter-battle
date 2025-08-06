@@ -1,5 +1,6 @@
 // src/pages/Game.tsx
 import { useEffect, useRef, useState } from "react";
+import { HeaderInfo } from "../components/HeaderInfo.js";
 import { PlayerCard, Timer } from "../components/index.js";
 import { COMPOSING_TIME_LIMIT } from "../constants.js";
 import { useSocket } from "../SocketContext";
@@ -10,7 +11,7 @@ type GameProps = {
   roomId: string;
 };
 
-function Game({ name, roomId }: GameProps) {
+export function Game({ name, roomId }: GameProps) {
   const socket = useSocket(); // ここでsocket取得
   
   const [joined, setJoined] = useState(false);
@@ -28,7 +29,7 @@ function Game({ name, roomId }: GameProps) {
   const [submissionAllowed, setSubmissionAllowed] = useState(false);
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
   const [votedPlayerId, setVotedPlayerId] = useState<string | null>(null);
-  const [phase, setPhase] = useState<GamePhase>("lobby");
+  const [phase, setPhase] = useState<GamePhase>("Lobby");
 
   const [timeLeft, setTimeLeft] = useState(COMPOSING_TIME_LIMIT);
   const [timerResetTrigger, setTimerResetTrigger] = useState(0);
@@ -55,13 +56,14 @@ function Game({ name, roomId }: GameProps) {
 
   useEffect(() => {
     socket.on("phase_update", (newPhase: GamePhase) => {
+      console.log(`[Socket] phase_update received: ${newPhase}`);
       setPhase(newPhase);
     });
 
     socket.on("players_update", ({ players, filtererId }: { players: Player[]; filtererId: string | null }) => {
       setPlayers(players);
       setFiltererId(filtererId);
-      setPhase((prev) => (prev === "lobby" ? "lobby" : prev)); // lobbyだったら維持
+      setPhase((prev) => (prev === "Lobby" ? "Lobby" : prev)); // lobbyだったら維持
     });
 
     socket.on("ready_status", ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
@@ -85,20 +87,24 @@ function Game({ name, roomId }: GameProps) {
       }
 
       let time = COMPOSING_TIME_LIMIT;
+      // タイマーのsetInterval内
       timerRef.current = setInterval(() => {
         time -= 1;
         setTimeLeft(time);
-        if (time <= 0) {
-          setSubmissionAllowed(false);
-          setSubmitted(true);
-          if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
+        console.log(`[Timer] timeLeft: ${time}`);
+          if (time <= 0) {
+            setSubmissionAllowed(false);
+            setSubmitted(true);
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
+            if (!submittedRef.current && draftCardRef.current.trim()) {
+              console.log("[Timer] time reached zero. Submitting card:", draftCardRef.current.trim());
+              socket.emit("submit_card", { card: draftCardRef.current.trim(), roomId });
+              submittedRef.current = true;
+            }
           }
-          if (!submitted && draftCard.trim()) {
-            socket.emit("submit_card", { card: draftCard.trim(), roomId });
-          }
-        }
       }, 1000);
     });
 
@@ -122,12 +128,12 @@ function Game({ name, roomId }: GameProps) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-      setPhase("reveal");
+      setPhase("Reveal");
       setVotingResults(null);
     });
 
     socket.on("voting_started", () => {
-      setPhase("voting");
+      setPhase("Voting");
       setVotingResults(null);
       setVotedPlayerId(null);
     });
@@ -183,19 +189,20 @@ function Game({ name, roomId }: GameProps) {
   };
 
   const handleVote = (playerId: string) => {
-    if (phase !== "voting" || !roomId) return;
+    if (phase !== "Voting" || !roomId) return;
     socket.emit("vote", { playerId, roomId });
     setVotedPlayerId(playerId);
   };
 
   const handleRestart = () => {
     if (!roomId) return;
-    setPhase("submit");
+    setPhase("Submit");
     socket.emit("ready_for_restart", { roomId });
   };
 
   const handleSubmitCard = () => {
     if (!draftCard.trim() || !submissionAllowed || !roomId) return;
+    console.log("[handleSubmitCard] カード送信:", draftCard.trim());
     socket.emit("submit_card", { card: draftCard.trim(), roomId });
     setSubmitted(true);
     setSubmissionAllowed(false);
@@ -204,7 +211,6 @@ function Game({ name, roomId }: GameProps) {
   const socketId = socket.id;
   const isFilterer = socketId === filtererId;
 
-  // それ以外はゲーム画面
   return (
     <div
       style={{
@@ -216,6 +222,14 @@ function Game({ name, roomId }: GameProps) {
         flexDirection: "column",
       }}
     >
+      {/* ヘッダー情報（お題・フィルター） */}
+      <HeaderInfo
+        currentTopicTitle={currentTopic?.title ?? null}
+        isFilterer={isFilterer}
+        currentFilter={currentFilter}
+      />
+
+      {/* タイマーとフェーズ表示は右上に絶対配置 */}
       <div
         style={{
           position: "absolute",
@@ -230,65 +244,56 @@ function Game({ name, roomId }: GameProps) {
       >
         <Timer timeLeft={timeLeft} />
         <div
-          style={{ marginTop: "0.5rem", fontWeight: "bold", textAlign: "center" }}
+          style={{
+            marginTop: "0.5rem",
+            fontWeight: "bold",
+            textAlign: "center",
+          }}
         >
-          {phase === "submit" && "フェーズ: カード提出"}
-          {phase === "reveal" && "フェーズ: カード公開"}
-          {phase === "voting" && "フェーズ: 投票受付中"}
+          {phase === "Submit" && "フェーズ: カード提出"}
+          {phase === "Reveal" && "フェーズ: カード公開"}
+          {phase === "Voting" && "フェーズ: 投票受付中"}
           {phase === "results" && "フェーズ: 結果表示"}
         </div>
       </div>
 
-      <h2>お題: {currentTopic ? currentTopic.title : "まだお題がありません"}</h2>
-
-      {isFilterer ? (
-        <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>
-          あなたがフィルタラーです
-          <br />
-          <span style={{ fontWeight: "normal", fontSize: "16px", color: "#555" }}>
-            フィルター: <strong>{currentFilter || "なし"}</strong> をテーマに書いてください
-          </span>
-        </p>
-      ) : (
-        <h3>フィルタラーを当てましょう!</h3>
-      )}
-
       <h2>カードの提出状況</h2>
       {players?.map((p) => {
         const votedByMeFlag =
-          (phase === "voting" || phase === "results") && votedPlayerId === p.id;
+          (phase === "Voting" || phase === "results") && votedPlayerId === p.id;
         return (
           <div key={p.id} style={{ marginBottom: "1rem" }}>
             <div
               onClick={() => {
-                if (phase === "voting" && p.id !== socketId) {
+                if (phase === "Voting" && p.id !== socket.id) {
                   handleVote(p.id);
                 }
               }}
               style={{
-                cursor: phase === "voting" && p.id !== socketId ? "pointer" : "default",
+                cursor:
+                  phase === "Voting" && p.id !== socket.id ? "pointer" : "default",
               }}
             >
               <PlayerCard
                 name={p.name}
                 card={cards[p.id] || ""}
-                editable={p.id === socketId && !submitted && submissionAllowed}
-                isMe={p.id === socketId}
-                draftCard={p.id === socketId ? draftCard : undefined}
+                editable={p.id === socket.id && !submitted && submissionAllowed}
+                isMe={p.id === socket.id}
+                draftCard={p.id === socket.id ? draftCard : undefined}
                 setDraftCard={
-                  p.id === socketId && !submitted && submissionAllowed
+                  p.id === socket.id && !submitted && submissionAllowed
                     ? setDraftCard
                     : undefined
                 }
                 onSubmitCard={
-                  p.id === socketId && !submitted && submissionAllowed
+                  p.id === socket.id && !submitted && submissionAllowed
                     ? handleSubmitCard
                     : undefined
                 }
                 submissionAllowed={submissionAllowed}
                 hasSubmitted={submittedPlayers.has(p.id)}
                 onVote={
-                  phase === "voting" && p.id !== socketId
+                  phase === "Voting" && p.id !== socket.id
                     ? () => handleVote(p.id)
                     : undefined
                 }
@@ -307,7 +312,7 @@ function Game({ name, roomId }: GameProps) {
         );
       })}
 
-      {phase === "reveal" && (
+      {phase === "Reveal" && (
         <button
           onClick={() => socket.emit("start_voting", { roomId })}
           style={{
@@ -360,5 +365,6 @@ function Game({ name, roomId }: GameProps) {
     </div>
   );
 }
+
 
 export default Game;

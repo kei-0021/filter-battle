@@ -5,7 +5,7 @@ import http from "http";
 import path from "path";
 import { Server } from "socket.io";
 import { fileURLToPath } from "url";
-import { USE_INDEPENDENT_TOPIC_AND_FILTERS } from "../constants.js";
+import { COMPOSING_TIME_LIMIT, USE_INDEPENDENT_TOPIC_AND_FILTERS } from "../constants.js";
 import filters from "../data/filters.json" with { type: "json" };
 import topics from "../data/topics.json" with { type: "json" };
 import { GameState, TopicWithFilters } from "../types/gameTypes.js";
@@ -48,8 +48,6 @@ server.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
 
-const SUBMIT_TIMEOUT_MS = 30_000;
-
 const gameStates = new Map<string, GameState>();
 
 function createInitialGameState(): GameState {
@@ -59,7 +57,7 @@ function createInitialGameState(): GameState {
     currentTopic: null,
     currentFilter: null,
     filtererId: null,
-    phase: "submit",
+    phase: "Submit",
     cards: {},
     hiddenCards: {},
     submittedPlayers: new Set(),
@@ -93,31 +91,33 @@ function pickRandomFilterWord(): string | null {
   return filters[idx].filter;
 }
 
+function updatePhase(state: GameState, roomId: string, newPhase: GameState["phase"]) {
+  state.phase = newPhase;
+  io.to(roomId).emit("phase_update", state.phase);
+  console.log(`[PhaseUpdate] ${newPhase} 開始 (room: ${roomId})`);
+}
+
 function startSubmitPhase(state: GameState, roomId: string) {
-  state.phase = "submit";
-  console.log(`[Phase] submitフェーズ開始 (room: ${roomId})`);
+  updatePhase(state, roomId, "Submit");
   state.hiddenCards = {};
   state.submittedPlayers.clear();
   if (state.submitTimer) {
     clearTimeout(state.submitTimer);
   }
   state.submitTimer = setTimeout(() => {
-    console.log(`[Phase] submitフェーズタイマー終了、カード公開へ移行 (room: ${roomId})`);
+    console.log(`[Timer] Submitフェーズタイマー終了、カード公開へ移行 (room: ${roomId})`);
     revealCards(state, roomId);
-  }, SUBMIT_TIMEOUT_MS);
-  io.to(roomId).emit("phase_update", state.phase);
+  }, COMPOSING_TIME_LIMIT * 1000);
 }
 
 function revealCards(state: GameState, roomId: string) {
-  state.phase = "reveal";
-  console.log(`[Phase] revealフェーズ開始 (room: ${roomId})`);
+  updatePhase(state, roomId, "Reveal");
   Object.assign(state.cards, state.hiddenCards);
   const revealed = { ...state.cards };
   state.hiddenCards = {};
   io.to(roomId).emit("cards_update", revealed);
   io.to(roomId).emit("submitted_update", Array.from(state.submittedPlayers));
   io.to(roomId).emit("reveal_cards", revealed);
-  io.to(roomId).emit("phase_update", state.phase);
   console.log(`[revealCards] カード公開 (room: ${roomId}):`, revealed);
 }
 
@@ -177,8 +177,6 @@ io.on("connection", (socket) => {
     const state = gameStates.get(roomId);
     if (!state) return;
 
-    // ここでお題やフィルタをセットしていない
-    // 例えば以下を入れてみる（サーバー起動時の最初の参加時しかセットしていないため）
     if (!state.currentTopic) {
       if (USE_INDEPENDENT_TOPIC_AND_FILTERS) {
         state.currentTopic = pickRandomTopic();
@@ -189,7 +187,6 @@ io.on("connection", (socket) => {
       }
     }
 
-    // 以下は初期化済み
     state.readyPlayers.clear();
     state.votes = {};
     state.cards = {};
@@ -199,12 +196,10 @@ io.on("connection", (socket) => {
     startSubmitPhase(state, roomId);
     io.to(roomId).emit("start_game_success", { roomId });
 
-    // さらに更新をクライアントに通知しないとお題が送られない
     io.to(roomId).emit("topic_update", state.currentTopic);
     io.to(roomId).emit("filter_update", state.currentFilter);
   });
 
-  // サーバーに追加
   socket.on("get_current_state", ({ roomId }) => {
     const state = gameStates.get(roomId);
     if (!state) return;
@@ -243,7 +238,7 @@ io.on("connection", (socket) => {
       state.hiddenCards = {};
       state.submittedPlayers.clear();
       state.votes = {};
-      state.phase = "submit";
+      updatePhase(state, roomId, "Submit");
 
       io.to(roomId).emit("players_update", { players: state.players, filtererId: state.filtererId });
       io.to(roomId).emit("topic_update", state.currentTopic);
@@ -259,8 +254,8 @@ io.on("connection", (socket) => {
   socket.on("submit_card", ({ roomId, card }: { roomId: string; card: string }) => {
     const state = gameStates.get(roomId);
     if (!state) return;
-    if (state.phase !== "submit") {
-      console.log("[submit_card] submitフェーズ以外のカード提出は無視");
+    if (state.phase !== "Submit") {
+      console.log("[submit_card] Submitフェーズ以外のカード提出は無視");
       return;
     }
 
@@ -280,20 +275,19 @@ io.on("connection", (socket) => {
   socket.on("start_voting", ({ roomId }: { roomId: string }) => {
     const state = gameStates.get(roomId);
     if (!state) return;
-    if (state.phase !== "reveal") {
-      console.log("[start_voting] 投票開始はrevealフェーズのみ有効");
+    if (state.phase !== "Reveal") {
+      console.log("[start_voting] 投票開始はRevealフェーズのみ有効");
       return;
     }
-    state.phase = "voting";
-    console.log(`[Phase] votingフェーズ開始 (room: ${roomId})`);
+    updatePhase(state, roomId, "Voting");
     io.to(roomId).emit("voting_started");
   });
 
   socket.on("vote", ({ roomId, playerId }: { roomId: string; playerId: string }) => {
     const state = gameStates.get(roomId);
     if (!state) return;
-    if (state.phase !== "voting") {
-      console.log("[vote] votingフェーズ以外の投票は無視");
+    if (state.phase !== "Voting") {
+      console.log("[vote] Votingフェーズ以外の投票は無視");
       return;
     }
     if (!state.players.find((p) => p.id === playerId)) {
@@ -329,8 +323,7 @@ io.on("connection", (socket) => {
         scoreDiffs,
       });
 
-      state.phase = "results";
-      io.to(roomId).emit("phase_update", state.phase);
+      updatePhase(state, roomId, "results");
 
       state.votes = {};
     }
@@ -357,7 +350,7 @@ io.on("connection", (socket) => {
             state.currentFilter = null;
             state.hiddenCards = {};
             state.submittedPlayers.clear();
-            state.phase = "submit";
+            updatePhase(state, roomId, "Submit");
             if (state.submitTimer) clearTimeout(state.submitTimer);
           }
         }
