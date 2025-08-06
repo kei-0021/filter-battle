@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { HeaderInfo } from "../components/HeaderInfo.js";
 import { PlayerCard, Timer } from "../components/index.js";
+import { ScoreBoard } from "../components/ScoreBoard.js";
 import { COMPOSING_TIME_LIMIT } from "../constants.js";
 import { useSocket } from "../SocketContext";
 import { CardsMap, GamePhase, Player, TopicWithFilters } from "../types/gameTypes.js";
@@ -330,23 +331,11 @@ export function Game({ name, roomId }: GameProps) {
         </button>
       )}
 
-      {phase === "results" && votingResults && (
-        <>
-          <h2>投票結果</h2>
-          <ul>
-            {players.map((p) => (
-              <li key={p.id}>
-                {p.name}: {votingResults.voteCounts[p.id] ?? 0}票 / スコア:{" "}
-                {votingResults.scores[p.id] ?? 0}（
-                {votingResults.scoreDiffs[p.id] > 0
-                  ? `+${votingResults.scoreDiffs[p.id]}`
-                  : votingResults.scoreDiffs[p.id] ?? 0}
-                ）
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      <ScoreBoard
+        players={players}
+        phase={phase}
+        votingResults={votingResults}
+      />
 
       <div
         style={{
