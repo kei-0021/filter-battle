@@ -1,10 +1,15 @@
 // src/main.tsx
-import * as React from 'react'
-import { createRoot } from 'react-dom/client'
-import Game from './pages/Game'
+import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import App from "./App";
+import { SocketProvider } from "./SocketContext";
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <Game />
-  </React.StrictMode>
-)
+createRoot(document.getElementById("root")!).render(
+  // <React.StrictMode>
+    <SocketProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </SocketProvider>
+  // {/* </React.StrictMode> */}
+);

@@ -125,8 +125,11 @@ io.on("connection", (socket) => {
   console.log("Connected:", socket.id);
 
   socket.on("get_rooms", () => {
-    const roomList = Array.from(gameStates.keys());
-    socket.emit("rooms_list", roomList);
+    const roomSummaries = Array.from(gameStates.entries()).map(([roomId, state]) => ({
+      roomId,
+      players: state.players.map(p => p.name),
+    }));
+    socket.emit("rooms_list", roomSummaries);
   });
 
   socket.on("join_room", ({ roomId, name }: { roomId: string; name: string }) => {
@@ -136,7 +139,6 @@ io.on("connection", (socket) => {
     }
     const state = gameStates.get(roomId)!;
 
-    // 同じsocket.idが重複して入らないようにチェック
     if (!state.players.find((p) => p.id === socket.id)) {
       state.players.push({ id: socket.id, name });
     }
@@ -145,7 +147,6 @@ io.on("connection", (socket) => {
 
     if (state.players.length === 1) {
       state.filtererId = socket.id;
-
       if (USE_INDEPENDENT_TOPIC_AND_FILTERS) {
         state.currentTopic = pickRandomTopic();
         state.currentFilter = pickRandomFilterWord();
@@ -153,8 +154,6 @@ io.on("connection", (socket) => {
         state.currentTopic = pickRandomTopic();
         state.currentFilter = pickRandomFilterByTopic(state.currentTopic);
       }
-
-      startSubmitPhase(state, roomId);
     }
 
     io.to(roomId).emit("players_update", { players: state.players, filtererId: state.filtererId });
@@ -163,6 +162,59 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("cards_update", state.cards);
     io.to(roomId).emit("submitted_update", Array.from(state.submittedPlayers));
     io.to(roomId).emit("phase_update", state.phase);
+
+    const roomSummaries = Array.from(gameStates.entries()).map(([roomId, state]) => ({
+      roomId,
+      players: state.players.map(p => p.name),
+    }));
+    io.emit("rooms_list", roomSummaries);
+
+    // ここを追加：join_room成功通知
+    socket.emit("join_room_success", roomId);
+  });
+
+  socket.on("start_game", ({ roomId }) => {
+    const state = gameStates.get(roomId);
+    if (!state) return;
+
+    // ここでお題やフィルタをセットしていない
+    // 例えば以下を入れてみる（サーバー起動時の最初の参加時しかセットしていないため）
+    if (!state.currentTopic) {
+      if (USE_INDEPENDENT_TOPIC_AND_FILTERS) {
+        state.currentTopic = pickRandomTopic();
+        state.currentFilter = pickRandomFilterWord();
+      } else {
+        state.currentTopic = pickRandomTopic();
+        state.currentFilter = pickRandomFilterByTopic(state.currentTopic);
+      }
+    }
+
+    // 以下は初期化済み
+    state.readyPlayers.clear();
+    state.votes = {};
+    state.cards = {};
+    state.hiddenCards = {};
+    state.submittedPlayers.clear();
+
+    startSubmitPhase(state, roomId);
+    io.to(roomId).emit("start_game_success", { roomId });
+
+    // さらに更新をクライアントに通知しないとお題が送られない
+    io.to(roomId).emit("topic_update", state.currentTopic);
+    io.to(roomId).emit("filter_update", state.currentFilter);
+  });
+
+  // サーバーに追加
+  socket.on("get_current_state", ({ roomId }) => {
+    const state = gameStates.get(roomId);
+    if (!state) return;
+
+    socket.emit("phase_update", state.phase);
+    socket.emit("topic_update", state.currentTopic);
+    socket.emit("filter_update", state.currentFilter);
+    socket.emit("cards_update", state.cards);
+    socket.emit("submitted_update", Array.from(state.submittedPlayers));
+    socket.emit("players_update", { players: state.players, filtererId: state.filtererId });
   });
 
   socket.on("ready_for_restart", ({ roomId }: { roomId: string }) => {
@@ -286,7 +338,6 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log("Disconnected:", socket.id);
-    // 参加しているすべてのルームからプレイヤーを削除する
     for (const [roomId, state] of gameStates.entries()) {
       const prevLength = state.players.length;
       state.players = state.players.filter((p) => p.id !== socket.id);

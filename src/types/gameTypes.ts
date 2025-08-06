@@ -1,5 +1,5 @@
 /** ゲームの進行フェーズ */
-export type GamePhase = "submit" | "reveal" | "voting" | "results";
+export type GamePhase = "lobby" | "submit" | "reveal" | "voting" | "results";
 
 /** プレイヤーIDの型 */
 export type PlayerId = string;

@@ -1,20 +1,18 @@
 // src/pages/Game.tsx
 import { useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
 import { PlayerCard, Timer } from "../components/index.js";
 import { COMPOSING_TIME_LIMIT } from "../constants.js";
+import { useSocket } from "../SocketContext";
 import { CardsMap, GamePhase, Player, TopicWithFilters } from "../types/gameTypes.js";
-import { RoomSelect } from "./RoomSelect"; // ルーム選択用コンポーネントを別途作成
-import { Title } from "./Title";
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
-const socket = io(SOCKET_URL, {
-  withCredentials: true,
-});
+type GameProps = {
+  name: string;
+  roomId: string;
+};
 
-function Game() {
-  const [name, setName] = useState("");
-  const [roomId, setRoomId] = useState<string | null>(null);
+function Game({ name, roomId }: GameProps) {
+  const socket = useSocket(); // ここでsocket取得
+  
   const [joined, setJoined] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [filtererId, setFiltererId] = useState<string | null>(null);
@@ -31,7 +29,7 @@ function Game() {
   const [timeLeft, setTimeLeft] = useState(COMPOSING_TIME_LIMIT);
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
   const [votedPlayerId, setVotedPlayerId] = useState<string | null>(null);
-  const [phase, setPhase] = useState<GamePhase>("submit");
+  const [phase, setPhase] = useState<GamePhase>("lobby");
 
   type VotingResults = {
     scores: Record<string, number>;
@@ -43,9 +41,19 @@ function Game() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    if (!roomId) return;
+    socket.emit("get_current_state", { roomId });
+  }, [roomId]);
+
+  useEffect(() => {
+    socket.on("phase_update", (newPhase: GamePhase) => {
+      setPhase(newPhase);
+    });
+
     socket.on("players_update", ({ players, filtererId }: { players: Player[]; filtererId: string | null }) => {
       setPlayers(players);
       setFiltererId(filtererId);
+      setPhase((prev) => (prev === "lobby" ? "lobby" : prev)); // lobbyだったら維持
     });
 
     socket.on("ready_status", ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
@@ -145,6 +153,7 @@ function Game() {
     });
 
     return () => {
+      socket.off("phase_update");
       socket.off("players_update");
       socket.off("ready_status");
       socket.off("topic_update");
@@ -159,14 +168,9 @@ function Game() {
     };
   }, [roomId, submitted, draftCard]);
 
-  const handleJoin = (joinName: string) => {
-    setName(joinName);
-  };
-
-  const handleEnterRoom = (room: string) => {
-    setRoomId(room);
-    socket.emit("join_room", { name, roomId: room });
-    setJoined(true);
+  const handleStartGame = () => {
+    if (!roomId) return;
+    socket.emit("start_game", { roomId });
   };
 
   const handleVote = (playerId: string) => {
@@ -191,9 +195,7 @@ function Game() {
   const socketId = socket.id;
   const isFilterer = socketId === filtererId;
 
-  if (!name) return <Title onJoin={handleJoin} />;
-  if (!roomId) return <RoomSelect name={name} onEnterRoom={handleEnterRoom} />;
-
+  // それ以外はゲーム画面
   return (
     <div
       style={{
@@ -205,160 +207,149 @@ function Game() {
         flexDirection: "column",
       }}
     >
-      {!name ? (
-        <Title onJoin={handleJoin} />
-      ) : !joined ? (
-        <RoomSelect name={name} onEnterRoom={handleEnterRoom} />
+      <div
+        style={{
+          position: "absolute",
+          top: "1rem",
+          right: "1rem",
+          zIndex: 10,
+          backgroundColor: "#fff",
+          padding: "0.5rem 1rem",
+          borderRadius: "8px",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+        }}
+      >
+        <Timer timeLeft={timeLeft} />
+        <div
+          style={{ marginTop: "0.5rem", fontWeight: "bold", textAlign: "center" }}
+        >
+          {phase === "submit" && "フェーズ: カード提出"}
+          {phase === "reveal" && "フェーズ: カード公開"}
+          {phase === "voting" && "フェーズ: 投票受付中"}
+          {phase === "results" && "フェーズ: 結果表示"}
+        </div>
+      </div>
+
+      <h2>お題: {currentTopic ? currentTopic.title : "まだお題がありません"}</h2>
+
+      {isFilterer ? (
+        <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>
+          あなたがフィルタラーです
+          <br />
+          <span style={{ fontWeight: "normal", fontSize: "16px", color: "#555" }}>
+            フィルター: <strong>{currentFilter || "なし"}</strong> をテーマに書いてください
+          </span>
+        </p>
       ) : (
-        <>
-          <div style={{ flexGrow: 1 }}>
+        <h3>フィルタラーを当てましょう!</h3>
+      )}
+
+      <h2>カードの提出状況</h2>
+      {players?.map((p) => {
+        const votedByMeFlag =
+          (phase === "voting" || phase === "results") && votedPlayerId === p.id;
+        return (
+          <div key={p.id} style={{ marginBottom: "1rem" }}>
             <div
+              onClick={() => {
+                if (phase === "voting" && p.id !== socketId) {
+                  handleVote(p.id);
+                }
+              }}
               style={{
-                position: "absolute",
-                top: "1rem",
-                right: "1rem",
-                zIndex: 10,
-                backgroundColor: "#fff",
-                padding: "0.5rem 1rem",
-                borderRadius: "8px",
-                boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+                cursor: phase === "voting" && p.id !== socketId ? "pointer" : "default",
               }}
             >
-              <Timer timeLeft={timeLeft} />
-              <div
-                style={{ marginTop: "0.5rem", fontWeight: "bold", textAlign: "center" }}
-              >
-                {phase === "submit" && "フェーズ: カード提出"}
-                {phase === "reveal" && "フェーズ: カード公開"}
-                {phase === "voting" && "フェーズ: 投票受付中"}
-                {phase === "results" && "フェーズ: 結果表示"}
-              </div>
+              <PlayerCard
+                name={p.name}
+                card={cards[p.id] || ""}
+                editable={p.id === socketId && !submitted && submissionAllowed}
+                isMe={p.id === socketId}
+                draftCard={p.id === socketId ? draftCard : undefined}
+                setDraftCard={
+                  p.id === socketId && !submitted && submissionAllowed
+                    ? setDraftCard
+                    : undefined
+                }
+                onSubmitCard={
+                  p.id === socketId && !submitted && submissionAllowed
+                    ? handleSubmitCard
+                    : undefined
+                }
+                submissionAllowed={submissionAllowed}
+                hasSubmitted={submittedPlayers.has(p.id)}
+                onVote={
+                  phase === "voting" && p.id !== socketId
+                    ? () => handleVote(p.id)
+                    : undefined
+                }
+                voted={p.id === votedPlayerId}
+                votedByMe={votedByMeFlag}
+                votedByOthers={
+                  phase === "results" && votingResults
+                    ? (votingResults.voteCounts[p.id] ?? 0) -
+                      (votedPlayerId === p.id ? 1 : 0)
+                    : 0
+                }
+                isFilterer={phase === "results" && p.id === filtererId}
+              />
             </div>
-
-            <h2>お題: {currentTopic ? currentTopic.title : "まだお題がありません"}</h2>
-
-            {isFilterer ? (
-              <p style={{ color: "red", fontWeight: "bold", fontSize: "20px" }}>
-                あなたがフィルタラーです
-                <br />
-                <span style={{ fontWeight: "normal", fontSize: "16px", color: "#555" }}>
-                  フィルター: <strong>{currentFilter || "なし"}</strong> をテーマに書いてください
-                </span>
-              </p>
-            ) : (
-              <h3>フィルタラーを当てましょう!</h3>
-            )}
-
-            <h2>カードの提出状況</h2>
-            {players?.map((p) => {
-              const votedByMeFlag =
-                (phase === "voting" || phase === "results") && votedPlayerId === p.id;
-              return (
-                <div key={p.id} style={{ marginBottom: "1rem" }}>
-                  <div
-                    onClick={() => {
-                      if (phase === "voting" && p.id !== socketId) {
-                        handleVote(p.id);
-                      }
-                    }}
-                    style={{
-                      cursor: phase === "voting" && p.id !== socketId ? "pointer" : "default",
-                    }}
-                  >
-                    <PlayerCard
-                      name={p.name}
-                      card={cards[p.id] || ""}
-                      editable={p.id === socketId && !submitted && submissionAllowed}
-                      isMe={p.id === socketId}
-                      draftCard={p.id === socketId ? draftCard : undefined}
-                      setDraftCard={
-                        p.id === socketId && !submitted && submissionAllowed
-                          ? setDraftCard
-                          : undefined
-                      }
-                      onSubmitCard={
-                        p.id === socketId && !submitted && submissionAllowed
-                          ? handleSubmitCard
-                          : undefined
-                      }
-                      submissionAllowed={submissionAllowed}
-                      hasSubmitted={submittedPlayers.has(p.id)}
-                      onVote={
-                        phase === "voting" && p.id !== socketId
-                          ? () => handleVote(p.id)
-                          : undefined
-                      }
-                      voted={p.id === votedPlayerId}
-                      votedByMe={votedByMeFlag}
-                      votedByOthers={
-                        phase === "results" && votingResults
-                          ? (votingResults.voteCounts[p.id] ?? 0) -
-                            (votedPlayerId === p.id ? 1 : 0)
-                          : 0
-                      }
-                      isFilterer={phase === "results" && p.id === filtererId}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-
-            {phase === "reveal" && (
-              <button
-                onClick={() => socket.emit("start_voting", { roomId })}
-                style={{
-                  marginTop: "1rem",
-                  padding: "0.6rem 1.2rem",
-                  fontSize: "1rem",
-                  backgroundColor: "#1976d2",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "5px",
-                  cursor: "pointer",
-                }}
-              >
-                投票に移る
-              </button>
-            )}
-
-            {phase === "results" && votingResults && (
-              <>
-                <h2>投票結果</h2>
-                <ul>
-                  {players.map((p) => (
-                    <li key={p.id}>
-                      {p.name}: {votingResults.voteCounts[p.id] ?? 0}票 / スコア:{" "}
-                      {votingResults.scores[p.id] ?? 0}（
-                      {votingResults.scoreDiffs[p.id] > 0
-                        ? `+${votingResults.scoreDiffs[p.id]}`
-                        : votingResults.scoreDiffs[p.id] ?? 0}
-                      ）
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
           </div>
+        );
+      })}
 
-          <div
-            style={{
-              paddingTop: "2rem",
-              borderTop: "1px solid #ccc",
-              marginBottom: "2rem",
-            }}
-          >
-            <button onClick={handleRestart} style={{ padding: "0.5rem 1rem" }}>
-              もう一度遊ぶ (全員準備完了で再スタート)
-            </button>
-            <p style={{ marginTop: "0.5rem" }}>
-              {readyCount} / {totalCount}人が準備済みです
-            </p>
-          </div>
+      {phase === "reveal" && (
+        <button
+          onClick={() => socket.emit("start_voting", { roomId })}
+          style={{
+            marginTop: "1rem",
+            padding: "0.6rem 1.2rem",
+            fontSize: "1rem",
+            backgroundColor: "#1976d2",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            cursor: "pointer",
+          }}
+        >
+          投票に移る
+        </button>
+      )}
+
+      {phase === "results" && votingResults && (
+        <>
+          <h2>投票結果</h2>
+          <ul>
+            {players.map((p) => (
+              <li key={p.id}>
+                {p.name}: {votingResults.voteCounts[p.id] ?? 0}票 / スコア:{" "}
+                {votingResults.scores[p.id] ?? 0}（
+                {votingResults.scoreDiffs[p.id] > 0
+                  ? `+${votingResults.scoreDiffs[p.id]}`
+                  : votingResults.scoreDiffs[p.id] ?? 0}
+                ）
+              </li>
+            ))}
+          </ul>
         </>
       )}
+
+      <div
+        style={{
+          paddingTop: "2rem",
+          borderTop: "1px solid #ccc",
+          marginBottom: "2rem",
+        }}
+      >
+        <button onClick={handleRestart} style={{ padding: "0.5rem 1rem" }}>
+          もう一度遊ぶ (全員準備完了で再スタート)
+        </button>
+        <p style={{ marginTop: "0.5rem" }}>
+          {readyCount} / {totalCount}人が準備済みです
+        </p>
+      </div>
     </div>
   );
-
 }
 
 export default Game;
