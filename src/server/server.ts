@@ -169,7 +169,7 @@ io.on("connection", (socket) => {
     }));
     io.emit("rooms_list", roomSummaries);
 
-    // ここを追加：join_room成功通知
+    // join_room成功通知
     socket.emit("join_room_success", roomId);
   });
 
@@ -194,10 +194,13 @@ io.on("connection", (socket) => {
     state.submittedPlayers.clear();
 
     startSubmitPhase(state, roomId);
-    io.to(roomId).emit("start_game_success", { roomId });
+    io.to(roomId).emit("start_game_success", { roomId, playerCount: state.players.length });
 
     io.to(roomId).emit("topic_update", state.currentTopic);
     io.to(roomId).emit("filter_update", state.currentFilter);
+
+    console.log(`[start_game] players count: ${state.players.length}`);
+    io.to(roomId).emit("ready_status", { readyCount: state.readyPlayers.size, totalCount: state.players.length });
   });
 
   socket.on("get_current_state", ({ roomId }) => {
@@ -219,7 +222,7 @@ io.on("connection", (socket) => {
     state.readyPlayers.add(socket.id);
     const readyCount = state.readyPlayers.size;
     const totalCount = state.players.length;
-    io.to(roomId).emit("ready_status", { readyCount, totalCount });
+    io.to(roomId).emit("ready_status", { readyCount, totalCount, readyPlayerIds: Array.from(state.readyPlayers) });
 
     if (readyCount === totalCount) {
       state.filtererId = pickRandomPlayer(state);
@@ -234,6 +237,8 @@ io.on("connection", (socket) => {
       }
 
       state.readyPlayers.clear();
+      io.to(roomId).emit("ready_status", { readyCount: 0, totalCount: state.players.length });
+      
       state.cards = {};
       state.hiddenCards = {};
       state.submittedPlayers.clear();

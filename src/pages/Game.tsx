@@ -13,10 +13,15 @@ type GameProps = {
 };
 
 export function Game({ name, roomId }: GameProps) {
-  const socket = useSocket(); // ここでsocket取得
-  
+  const socket = useSocket();
+
   const [joined, setJoined] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
+  const playersRef = useRef<Player[]>(players);
+  useEffect(() => {
+    playersRef.current = players;
+  }, [players]);
+
   const [filtererId, setFiltererId] = useState<string | null>(null);
   const [readyCount, setReadyCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -30,26 +35,39 @@ export function Game({ name, roomId }: GameProps) {
   const [submissionAllowed, setSubmissionAllowed] = useState(false);
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
   const [votedPlayerId, setVotedPlayerId] = useState<string | null>(null);
-  const [phase, setPhase] = useState<GamePhase>("Lobby");
 
+  const [phase, setPhase] = useState<GamePhase>("Lobby");
   const [timeLeft, setTimeLeft] = useState(COMPOSING_TIME_LIMIT);
   const [timerResetTrigger, setTimerResetTrigger] = useState(0);
-  
+
+  const [readyPlayerIds, setReadyPlayerIds] = useState<Set<string>>(new Set());
+
   type VotingResults = {
     scores: Record<string, number>;
     voteCounts: Record<string, number>;
     scoreDiffs: Record<string, number>;
   };
   const [votingResults, setVotingResults] = useState<VotingResults | null>(null);
-  
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const submittedRef = useRef(false); // 重複submit防止フラグ
+  const submittedRef = useRef(false);
   const draftCardRef = useRef("");
 
   useEffect(() => {
     if (!roomId) return;
     socket.emit("get_current_state", { roomId });
-  }, [roomId]);
+  }, [roomId, socket]);
+
+  useEffect(() => {
+    socket.on("start_game_success", ({ playerCount }: { playerCount: number }) => {
+      setReadyCount(0);
+      setTotalCount(playerCount);
+    });
+
+    return () => {
+      socket.off("start_game_success");
+    };
+  }, [socket]);
 
   useEffect(() => {
     draftCardRef.current = draftCard;
@@ -64,18 +82,23 @@ export function Game({ name, roomId }: GameProps) {
     socket.on("players_update", ({ players, filtererId }: { players: Player[]; filtererId: string | null }) => {
       setPlayers(players);
       setFiltererId(filtererId);
-      setPhase((prev) => (prev === "Lobby" ? "Lobby" : prev)); // lobbyだったら維持
+      setPhase((prev) => (prev === "Lobby" ? "Lobby" : prev));
+      // プレイヤー人数更新に合わせてtotalCountも更新（Lobby以外の時）
+      if (phase !== "Lobby") {
+        setTotalCount(players.length);
+      }
     });
 
-    socket.on("ready_status", ({ readyCount, totalCount }: { readyCount: number; totalCount: number }) => {
+    socket.on("ready_status", ({ readyCount, totalCount, readyPlayerIds }: { readyCount: number; totalCount: number; readyPlayerIds: string[] }) => {
       setReadyCount(readyCount);
       setTotalCount(totalCount);
+      setReadyPlayerIds(new Set(readyPlayerIds));
     });
 
     socket.on("topic_update", (topic: TopicWithFilters | null) => {
       setCurrentTopic(topic);
       setDraftCard("");
-      submittedRef.current = false; // submitフラグクリア
+      submittedRef.current = false;
       setSubmitted(false);
       setSubmissionAllowed(true);
       setTimeLeft(COMPOSING_TIME_LIMIT);
@@ -87,26 +110,25 @@ export function Game({ name, roomId }: GameProps) {
       }
 
       let time = COMPOSING_TIME_LIMIT;
-      // タイマーのsetInterval内
       timerRef.current = setInterval(() => {
         time -= 1;
         setTimeLeft(time);
         console.log(`[Timer] timeLeft: ${time}`);
-          if (time <= 0) {
-            setSubmissionAllowed(false);
-            setSubmitted(true);
-            if (timerRef.current) {
-              clearInterval(timerRef.current);
-              timerRef.current = null;
-            }
-            if (!submittedRef.current) {
-              const trimmedCard = draftCardRef.current.trim();
-              const cardToSend = trimmedCard === "" ? "" : trimmedCard;
-              console.log("[Timer] time reached zero. Submitting card:", cardToSend);
-              socket.emit("submit_card", { card: cardToSend, roomId });
-              submittedRef.current = true;
-            }
+        if (time <= 0) {
+          setSubmissionAllowed(false);
+          setSubmitted(true);
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
           }
+          if (!submittedRef.current) {
+            const trimmedCard = draftCardRef.current.trim();
+            const cardToSend = trimmedCard === "" ? "" : trimmedCard;
+              console.log("[Timer] time reached zero. Submitting card:", cardToSend);
+            socket.emit("submit_card", { card: cardToSend, roomId });
+            submittedRef.current = true;
+          }
+        }
       }, 1000);
     });
 
@@ -123,7 +145,6 @@ export function Game({ name, roomId }: GameProps) {
     });
 
     socket.on("reveal_cards", (cardsData: CardsMap) => {
-      console.log("[Socket] 🃏 reveal_cards received:", cardsData);
       setCards(cardsData);
       setSubmissionAllowed(false);
       setTimeLeft(0);
@@ -150,6 +171,10 @@ export function Game({ name, roomId }: GameProps) {
       setSubmissionAllowed(true);
       setTimeLeft(COMPOSING_TIME_LIMIT);
       setSubmittedPlayers(new Set());
+      setReadyCount(0); // ここで準備済みカウントリセット
+      setTotalCount(playersRef.current.length); // プレイヤー人数セット
+      setReadyPlayerIds(new Set());
+
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
@@ -181,7 +206,7 @@ export function Game({ name, roomId }: GameProps) {
       socket.off("voting_results");
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [roomId, socket]);
+  }, [roomId, socket, phase]);
 
   const handleStartGame = () => {
     if (!roomId) return;
@@ -201,7 +226,6 @@ export function Game({ name, roomId }: GameProps) {
 
   const handleSubmitCard = () => {
     if (!draftCard.trim() || !submissionAllowed || !roomId) return;
-    console.log("[handleSubmitCard] カード送信:", draftCard.trim());
     socket.emit("submit_card", { card: draftCard.trim(), roomId });
     setSubmitted(true);
     setSubmissionAllowed(false);
@@ -221,14 +245,12 @@ export function Game({ name, roomId }: GameProps) {
         flexDirection: "column",
       }}
     >
-      {/* ヘッダー情報（お題・フィルター） */}
       <HeaderInfo
         currentTopicTitle={currentTopic?.title ?? null}
         isFilterer={isFilterer}
         currentFilter={currentFilter}
       />
 
-      {/* タイマーとフェーズ表示は右上に絶対配置 */}
       <div
         style={{
           position: "absolute",
@@ -344,15 +366,24 @@ export function Game({ name, roomId }: GameProps) {
         }}
       >
         <button onClick={handleRestart} style={{ padding: "0.5rem 1rem" }}>
-          もう一度遊ぶ (全員準備完了で再スタート)
+          (全員準備完了で) 次のお題へ
         </button>
         <p style={{ marginTop: "0.5rem" }}>
           {readyCount} / {totalCount}人が準備済みです
         </p>
       </div>
+      <div>
+        <h3>準備完了プレイヤー</h3>
+        <ul>
+          {players
+            .filter((p) => readyPlayerIds.has(p.id))
+            .map((p) => (
+              <li key={p.id}>{p.name}</li>
+            ))}
+        </ul>
+      </div>
     </div>
   );
 }
-
 
 export default Game;
