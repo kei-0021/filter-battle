@@ -80,7 +80,6 @@ export function Game({ name, roomId }: GameProps) {
       setSubmissionAllowed(true);
       setTimeLeft(COMPOSING_TIME_LIMIT);
       setSubmittedPlayers(new Set());
-      setVotingResults(null);
 
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -100,9 +99,11 @@ export function Game({ name, roomId }: GameProps) {
               clearInterval(timerRef.current);
               timerRef.current = null;
             }
-            if (!submittedRef.current && draftCardRef.current.trim()) {
-              console.log("[Timer] time reached zero. Submitting card:", draftCardRef.current.trim());
-              socket.emit("submit_card", { card: draftCardRef.current.trim(), roomId });
+            if (!submittedRef.current) {
+              const trimmedCard = draftCardRef.current.trim();
+              const cardToSend = trimmedCard === "" ? "" : trimmedCard;
+              console.log("[Timer] time reached zero. Submitting card:", cardToSend);
+              socket.emit("submit_card", { card: cardToSend, roomId });
               submittedRef.current = true;
             }
           }
@@ -122,6 +123,7 @@ export function Game({ name, roomId }: GameProps) {
     });
 
     socket.on("reveal_cards", (cardsData: CardsMap) => {
+      console.log("[Socket] 🃏 reveal_cards received:", cardsData);
       setCards(cardsData);
       setSubmissionAllowed(false);
       setTimeLeft(0);
@@ -130,12 +132,10 @@ export function Game({ name, roomId }: GameProps) {
         timerRef.current = null;
       }
       setPhase("Reveal");
-      setVotingResults(null);
     });
 
     socket.on("voting_started", () => {
       setPhase("Voting");
-      setVotingResults(null);
       setVotedPlayerId(null);
     });
 
@@ -150,7 +150,6 @@ export function Game({ name, roomId }: GameProps) {
       setSubmissionAllowed(true);
       setTimeLeft(COMPOSING_TIME_LIMIT);
       setSubmittedPlayers(new Set());
-      setVotingResults(null);
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
@@ -197,7 +196,6 @@ export function Game({ name, roomId }: GameProps) {
 
   const handleRestart = () => {
     if (!roomId) return;
-    setPhase("Submit");
     socket.emit("ready_for_restart", { roomId });
   };
 
@@ -276,6 +274,7 @@ export function Game({ name, roomId }: GameProps) {
               }}
             >
               <PlayerCard
+                phase={phase}
                 name={p.name}
                 card={cards[p.id] || ""}
                 editable={p.id === socket.id && !submitted && submissionAllowed}

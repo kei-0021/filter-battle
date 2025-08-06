@@ -1,6 +1,8 @@
 import React from "react";
+import { GamePhase } from "../types/gameTypes";
 
 type PlayerCardProps = {
+  phase: GamePhase
   name: string;
   card: string;
   editable: boolean;
@@ -18,6 +20,7 @@ type PlayerCardProps = {
 };
 
 export const PlayerCard = ({
+  phase,
   name,
   card,
   editable,
@@ -222,12 +225,28 @@ export const PlayerCard = ({
             </button>
           </>
         ) : (
-          <p style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: "1rem" }}>
-            {isMe
-              ? draftCard || card || "（考え中...）"
+          <p
+            style={{
+              whiteSpace: "pre-wrap",
+              margin: 0,
+              fontSize: "1rem",
+              minHeight: "80px",  // テキストエリアの高さを固定（例：80px）
+              display: "flex",
+              alignItems: "center", // テキストを上下中央に配置（お好みで調整）
+              justifyContent: "center", // テキストを中央寄せしたい場合
+            }}
+          >
+            {phase === "Submit"
+              ? isMe
+                ? draftCard || (card || "（考え中...）")
+                : hasSubmitted
+                ? card || "（提出済み）"
+                : "（考え中...）"
+              : isMe
+              ? draftCard ?? card ?? ""
               : hasSubmitted
-              ? card || "（提出済み）"
-              : "（考え中...）"}
+              ? card ?? ""
+              : ""}
           </p>
         )}
       </div>
