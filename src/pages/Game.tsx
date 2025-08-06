@@ -26,24 +26,32 @@ function Game({ name, roomId }: GameProps) {
   const [draftCard, setDraftCard] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submissionAllowed, setSubmissionAllowed] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(COMPOSING_TIME_LIMIT);
   const [submittedPlayers, setSubmittedPlayers] = useState<Set<string>>(new Set());
   const [votedPlayerId, setVotedPlayerId] = useState<string | null>(null);
   const [phase, setPhase] = useState<GamePhase>("lobby");
 
+  const [timeLeft, setTimeLeft] = useState(COMPOSING_TIME_LIMIT);
+  const [timerResetTrigger, setTimerResetTrigger] = useState(0);
+  
   type VotingResults = {
     scores: Record<string, number>;
     voteCounts: Record<string, number>;
     scoreDiffs: Record<string, number>;
   };
   const [votingResults, setVotingResults] = useState<VotingResults | null>(null);
-
+  
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const submittedRef = useRef(false); // 重複submit防止フラグ
+  const draftCardRef = useRef("");
 
   useEffect(() => {
     if (!roomId) return;
     socket.emit("get_current_state", { roomId });
   }, [roomId]);
+
+  useEffect(() => {
+    draftCardRef.current = draftCard;
+  }, [draftCard]);
 
   useEffect(() => {
     socket.on("phase_update", (newPhase: GamePhase) => {
@@ -64,6 +72,7 @@ function Game({ name, roomId }: GameProps) {
     socket.on("topic_update", (topic: TopicWithFilters | null) => {
       setCurrentTopic(topic);
       setDraftCard("");
+      submittedRef.current = false; // submitフラグクリア
       setSubmitted(false);
       setSubmissionAllowed(true);
       setTimeLeft(COMPOSING_TIME_LIMIT);
@@ -166,7 +175,7 @@ function Game({ name, roomId }: GameProps) {
       socket.off("voting_results");
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [roomId, submitted, draftCard]);
+  }, [roomId, socket]);
 
   const handleStartGame = () => {
     if (!roomId) return;
