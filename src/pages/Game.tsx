@@ -354,6 +354,7 @@ export function Game({ name, roomId }: GameProps) {
 
       <ScoreBoard
         players={players}
+        myPlayerId={socket.id ?? ""}
         phase={phase}
         votingResults={votingResults}
       />
