@@ -173,6 +173,52 @@ io.on("connection", (socket) => {
     socket.emit("join_room_success", roomId);
   });
 
+  socket.on("leave_room", ({ roomId }: { roomId: string }) => {
+    const state = gameStates.get(roomId);
+    if (!state) return;
+
+    // プレイヤーをルームのplayersから削除
+    const prevLength = state.players.length;
+    state.players = state.players.filter(p => p.id !== socket.id);
+
+    // その他の状態クリア
+    state.readyPlayers.delete(socket.id);
+    delete state.cards[socket.id];
+    delete state.hiddenCards[socket.id];
+    state.submittedPlayers.delete(socket.id);
+    delete state.votes[socket.id];
+
+    // filtererIdが抜けたなら再設定
+    if (socket.id === state.filtererId) {
+      if (state.players.length > 0) {
+        state.filtererId = state.players[0].id;
+      } else {
+        state.filtererId = null;
+        state.currentTopic = null;
+        state.currentFilter = null;
+        state.hiddenCards = {};
+        state.submittedPlayers.clear();
+        updatePhase(state, roomId, "Submit");
+        if (state.submitTimer) clearTimeout(state.submitTimer);
+      }
+    }
+
+    socket.leave(roomId);
+
+    io.to(roomId).emit("players_update", { players: state.players, filtererId: state.filtererId });
+    io.to(roomId).emit("ready_status", { readyCount: state.readyPlayers.size, totalCount: state.players.length });
+    io.to(roomId).emit("topic_update", state.currentTopic);
+    io.to(roomId).emit("filter_update", state.currentFilter);
+    io.to(roomId).emit("cards_update", state.cards);
+    io.to(roomId).emit("submitted_update", Array.from(state.submittedPlayers));
+    io.to(roomId).emit("phase_update", state.phase);
+
+    if (state.players.length === 0) {
+      gameStates.delete(roomId);
+      console.log(`[Room Cleanup] ルーム「${roomId}」を削除`);
+    }
+  });
+
   socket.on("start_game", ({ roomId }) => {
     const state = gameStates.get(roomId);
     if (!state) return;

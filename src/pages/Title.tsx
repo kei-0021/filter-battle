@@ -72,7 +72,7 @@ export function Title(props: { onJoin: (name: string) => void }) {
             : "none",
         }}
       >
-        参加する
+        始める
       </button>
     </div>
   );
